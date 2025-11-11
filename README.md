@@ -21,4 +21,6 @@ CASA0013_Groupwork/
 
 │      └── Presentations/
 
-└── README.md                  
+└── README.md                 
+
+**Whiteboard**: [Miro link](https://miro.com/app/board/uXjVJwQogQI=/)
