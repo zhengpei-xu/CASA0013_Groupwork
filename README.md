@@ -23,4 +23,4 @@ CASA0013_Groupwork/
 
 └── README.md                 
 
-**Whiteboard**: [Miro whiteboard for talk and share](https://miro.com/app/board/uXjVJwQogQI=/)
+**Whiteboard**: [Miro whiteboard for talking and sharing](https://miro.com/app/board/uXjVJwQogQI=/)
