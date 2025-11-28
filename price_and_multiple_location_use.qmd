@@ -545,3 +545,36 @@ print(f"Clusters with ≥5 listings: {n5}")
 ```
 
 These results show that duplication at the same address is widespread: 1,806 clusters have at least two listings by the same host, 705 clusters have three or more, and 248 clusters have five or more. This concentration of multiple listings at identical locations underscores how Airbnb is dominated by professional operators rather than casual hosts, reinforcing the argument that the platform is out of control.
+
+```{python}
+import matplotlib.pyplot as plt
+
+# --- Collapse to one point per cluster ---
+cluster_geo = (
+    gdf.groupby("address_cluster")
+    .agg({"geometry":"first", "x_round":"first", "y_round":"first"})
+    .reset_index()
+    .merge(cluster_counts, on="address_cluster")
+)
+
+# --- Make a GeoDataFrame of clusters ---
+cluster_gdf = gpd.GeoDataFrame(cluster_geo, geometry="geometry", crs=gdf.crs)
+
+# --- Plot bubble map ---
+fig, ax = plt.subplots(figsize=(8,8))
+cluster_gdf.plot(
+    ax=ax,
+    markersize=cluster_gdf["count"]*0.8,  # smaller bubbles
+    alpha=0.5,
+    color="red"
+)
+
+# Zoom to data extent
+ax.set_xlim(cluster_gdf.total_bounds[0], cluster_gdf.total_bounds[2])
+ax.set_ylim(cluster_gdf.total_bounds[1], cluster_gdf.total_bounds[3])
+
+plt.title("Duplicate Airbnb Listings by Same Host at Same Address (10m tolerance)")
+plt.axis("off")
+plt.tight_layout()
+plt.show()
+```

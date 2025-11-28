@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.26">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Christian Mulder">
+<meta name="dcterms.date" content="2025-11-01">
+
+<title>Spatial Analysis of Multi‑Host Airbnb Activity in London</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="Mapping_Location_of_Properties_files/libs/clipboard/clipboard.min.js"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/popper.min.js"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="Mapping_Location_of_Properties_files/libs/quarto-html/anchor.min.js"></script>
+<link href="Mapping_Location_of_Properties_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="Mapping_Location_of_Properties_files/libs/quarto-html/quarto-syntax-highlighting-587c61ba64f3a5504c4d52d930310e48.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="Mapping_Location_of_Properties_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="Mapping_Location_of_Properties_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="Mapping_Location_of_Properties_files/libs/bootstrap/bootstrap-90e45549688f5d2289bf1fc8cdb63064.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+</head><body class="fullcontent quarto-light">\usepackage{setspace}
+\usepackage{sectsty}
+\sectionfont{\normalsize}
+
+
+
+
+
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Spatial Analysis of Multi‑Host Airbnb Activity in London</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Christian Mulder </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">November 1, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>To begin with, I will start by reading in all the necessary files, which are the listings CSV, the borough boundary data, and then the MSOA data.</p>
+<div id="d33efb3c" class="cell" data-execution_count="1">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-2-output-1.png" width="912" height="731" class="figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-2-output-2.png" width="912" height="731" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>In order to further analyse, I will take these following steps: - Counts and distributions (MSOA/borough, normal/log). - Normality checks (Shapiro–Wilk). - Gini coefficient (MSOA and borough) → here it acts as a descriptive inequality measure alongside distributions. - Density visualization (KDE attempt, maps). - Global spatial autocorrelation (Moran’s I). - Neighbor definition comparison (KNN vs Distance Band). - Spatial Error Model. - *Local clustering (Getis–Ord Gi)**. - Return to inequality in discussion → you can revisit the Gini in the conclusion, tying it to spatial clustering.</p>
+<p>-———</p>
+<section id="counts-and-distributions" class="level2">
+<h2 class="anchored" data-anchor-id="counts-and-distributions">Counts and Distributions</h2>
+<p>First, the following two maps will be the distribution of counts (tallied per area) for the Borough and MSOA data.</p>
+<p>#####MSOA:</p>
+<div id="d9f10c45" class="cell" data-execution_count="2">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-3-output-1.png" width="866" height="914" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<section id="borough" class="level5">
+<h5 class="anchored" data-anchor-id="borough">Borough:</h5>
+<div id="d621f1a0" class="cell" data-execution_count="3">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-4-output-1.png" width="866" height="906" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Now that I have plotted these, I want to create a basic distribution analysis.</p>
+</section>
+<section id="distribution-table" class="level4">
+<h4 class="anchored" data-anchor-id="distribution-table">Distribution table:</h4>
+<div id="2a3bd42e" class="cell" data-execution_count="4">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-5-output-1.png" width="846" height="526" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Just to test whether this is a bad skew (although I would say the diagram is pretty obvious…), I will do a Shapiro-Wilk p-value test:</p>
+<div id="e6a1299b" class="cell" data-execution_count="5">
+<div class="cell-output cell-output-stdout">
+<pre><code>Shapiro-Wilk p-value: 2.327478492219949e-46</code></pre>
+</div>
+</div>
+<p>Because from this bar chart of the normal distribution, which is very extremely positively skewed, I want to try creating a log-scaled histogram to see if that changes anything.</p>
+<div id="a47ada7f" class="cell" data-execution_count="6">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-7-output-1.png" width="812" height="526" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>And again let’s test the Shapiro-Wilk p-value:</p>
+<div id="4ca1d2ec" class="cell" data-execution_count="7">
+<div class="cell-output cell-output-stdout">
+<pre><code>Shapiro-Wilk p-value (log counts): 0.0300</code></pre>
+</div>
+</div>
+<p>The Shapiro–Wilk test on the raw MSOA counts returned a p‑value of 2.3^{-46}, providing overwhelming evidence against normality. This confirms what the histogram suggested: the distribution of multi‑host listings is extremely skewed. After applying a log transformation, the p‑value increased to 0.0300. Although this is still below the conventional 0.05 threshold (meaning the log‑transformed data cannot be considered perfectly normal), the improvement is substantial. The log scale reduces skewness and brings the distribution closer to normality, making it more suitable for visualization and interpretation, especially when comparing areas with smaller counts.</p>
+<p>To better visualise the distribution, the following map applies a log scale transformation. This adjustment reduces the dominance of areas with exceptionally high counts (such as Westminster), allowing spatial patterns in other boroughs to remain visible and interpretable.</p>
+<div id="515045a0" class="cell" data-execution_count="8">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-9-output-1.png" width="840" height="914" class="figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-9-output-2.png" width="853" height="906" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="gini" class="level4">
+<h4 class="anchored" data-anchor-id="gini">Gini</h4>
+<p>I will now do a quick Gini test, which measures how unevenly multi‑host listings are distributed across areas. A higher Gini value indicates that activity is concentrated in fewer places, while a lower value suggests a more even spread.</p>
+<p>The Gini coefficient ranges from 0 (perfect equality) to 1 (maximum inequality), with values above about 0.5 generally considered high.</p>
+<div id="a750f511" class="cell" data-execution_count="9">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-10-output-1.png" width="949" height="566" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The Gini coefficient of 0.503 at the borough scale indicates a moderate degree of inequality in the distribution of multi‑host listings across London. Some boroughs host substantially more multi‑host activity than others, but the overall pattern is less extreme than at finer spatial resolutions.</p>
+<div id="90c6bc0f" class="cell" data-execution_count="10">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-11-output-1.png" width="949" height="566" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>At the MSOA scale, the Gini coefficient rises to 0.627, revealing a much higher degree of spatial inequality. This shows that inequality is not only present between boroughs, but also concentrated within them: a relatively small number of MSOAs account for a disproportionately large share of multi‑host listings, while the majority contain very few or none. In other words, hotspots of multi‑host activity emerge at the neighbourhood level, highlighting that regulation or policy responses cannot rely solely on borough‑wide averages but must account for highly localized concentrations.</p>
+<p>-——— ## Autocorrelation &amp; Point Pattern Analysis</p>
+</section>
+<section id="kde" class="level4">
+<h4 class="anchored" data-anchor-id="kde">KDE</h4>
+<p>Kernel Density Estimation (KDE) allows you to move beyond raw counts by creating a smooth surface that highlights where multi‑host listings are most concentrated. This helps reveal localized hotspots and spatial patterns that might be obscured when only looking at aggregated counts.</p>
+<div id="c4164c8d" class="cell" data-execution_count="11">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-12-output-1.png" width="1142" height="898" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Now the following map has decided on fixd boundaries:</p>
+<p>So I think this simpler map might be better for displaying a simplified version of the KDE considering who we are presenting it to. Howwever, I will need to continue working on this, as the heat map does not seem to correspond somehow with the actual results, so maybe I have made it too smooth and diluted in my attempt to accurately match it to the boundary lines. So it will need some more work.</p>
+<p>Now because I find that both these maps look like they’re a little bit off when I’m comparing them to the count (although that is possible in KDE because it is different) I will definitely continue from here. For the remaining autocorrelation I will first do Moran’s I:</p>
+</section>
+<section id="morans-i-test-local-and-global-outcomes" class="level4">
+<h4 class="anchored" data-anchor-id="morans-i-test-local-and-global-outcomes">Moran’s I Test (Local and Global Outcomes)</h4>
+<div id="10a3841e" class="cell" data-execution_count="12">
+<div class="cell-output cell-output-stdout">
+<pre><code>Moran's I: 0.6465
+p-value (permutation): 0.0010
+z-score (normal approx): 42.761
+MSOAs with zero neighbors (should be 0): 0</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-13-output-2.png" width="1526" height="662" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Moran’s I of 0.6465 with a p-value of 0.001 indicates strong, statistically significant spatial clustering of multi-host listings across London MSOAs. High-count areas are surrounded by other high-count areas, confirming that the distribution is far from random. This suggests concentrated zones of multi-host activity that may warrant targeted policy attention.</p>
+<p>Having confirmed spatial autocorrelation with Moran’s I, I will now test the spatial lag and error models to assess whether the variation in multi-host density is better explained by neighboring effects or unobserved spatial structure in the census-like boundary data.</p>
+</section>
+<section id="spatial-lag-model" class="level4">
+<h4 class="anchored" data-anchor-id="spatial-lag-model">Spatial Lag Model</h4>
+<div id="0f8814e9" class="cell" data-execution_count="13">
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Spatial Lag Model (counts only)
+ρ (spatial lag coefficient): 0.9229
+Pseudo R²: 0.7203
+AIC: 10973.48
+Intercept: 5.0279</code></pre>
+</div>
+</div>
+<div id="2569a945" class="cell" data-execution_count="14">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-15-output-1.png" width="1480" height="662" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>While I ran the spatial lag model to explore potential spillover effects between neighboring MSOAs, I don’t believe it adds meaningful insight in this context. Just because two areas are adjacent doesn’t imply that multi-host listing counts in one directly influence the other — these are not inherently relational phenomena. The clustering observed is more likely due to shared local conditions than spatial dependence, so including the lag model may misrepresent the underlying dynamics.</p>
+<p>Since adjacency alone doesn’t imply causal influence between MSOAs, I turn instead to a spatial error model to capture unobserved spatial clustering in the residuals.</p>
+</section>
+<section id="spatial-error-model" class="level4">
+<h4 class="anchored" data-anchor-id="spatial-error-model">Spatial Error Model</h4>
+<div id="c6383dde" class="cell" data-execution_count="15">
+<div class="cell-output cell-output-stdout">
+<pre><code>REGRESSION RESULTS
+------------------
+
+SUMMARY OF OUTPUT: GM SPATIALLY WEIGHTED LEAST SQUARES
+------------------------------------------------------
+Data set            :     unknown
+Weights matrix      :     unknown
+Dependent Variable  :multi_host_count                Number of Observations:        1061
+Mean dependent var  :     53.9123                Number of Variables   :           5
+S.D. dependent var  :     93.6301                Degrees of Freedom    :        1056
+Pseudo R-squared    :      0.1214
+
+------------------------------------------------------------------------------------
+            Variable     Coefficient       Std.Error     z-Statistic     Probability
+------------------------------------------------------------------------------------
+            CONSTANT       -90.17953        48.28972        -1.86747         0.06184
+            USUALRES        -0.02064         0.00482        -4.28147         0.00002
+              POPDEN        -0.19173         0.05168        -3.70956         0.00021
+              HHOLDS         0.07458         0.01196         6.23686         0.00000
+           AVHHOLDSZ        36.14739        17.21963         2.09920         0.03580
+              lambda         0.92825    
+------------------------------------------------------------------------------------
+================================ END OF REPORT =====================================</code></pre>
+</div>
+</div>
+<p>The model shows that while household variables like number of households and average household size are positively associated with multi‑host listings, population and density are negatively associated. However, the most striking result is the very high and significant spatial error coefficient (lambda ≈ 0.93), which indicates that even after accounting for these demographic factors, there remains strong spatial autocorrelation in the residuals. In other words, clustering of multi‑host activity is not fully explained by population or housing characteristics alone, but is (obvioiusly) impacted by another variable. If we could find some data on tourism, housing cost, or anything else like this that could definitely further expand this.</p>
+<p>However, crucially this above output is not very presentable to a mayor. So while we can maybe discuss it, saying our own research showed that these variables used show that there are other factors that need to be accounted for, I think it would be better not to show the output as it might not be visually pleasing (like even I don’t wanna look at it realistically).</p>
+</section>
+<section id="getis-ord-gi" class="level4">
+<h4 class="anchored" data-anchor-id="getis-ord-gi">Getis-Ord Gi</h4>
+<p>Next, I will use the Getis‑Ord Gi statistic to identify local hotspots and coldspots of multi‑host activity.</p>
+<div id="5aa007c7" class="cell" data-execution_count="16">
+<div class="cell-output cell-output-stdout">
+<pre><code>    MSOA11CD  count       GiZ    GiP            GiSig
+0  E02000001    447  3.169964  0.002          Hotspot
+1  E02000001    447  2.227341  0.006          Hotspot
+2  E02000002      3 -0.382412  0.084  Not Significant
+3  E02000003     16 -0.369450  0.098  Not Significant
+4  E02000004      5 -0.331185  0.158  Not Significant</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-17-output-2.png" width="950" height="761" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>So because the MSOA data for some reason doesn’t recognise that the polygons are connected to one another (so it thinks they are seperate) I had to define the number of neighbours (which I set to 5 so it isn’t too many and over the top of a strange pattern) but this does mean this map is not entirely accurate. It is still interesting though.</p>
+<p>Now I will do the same with the boroughs, which doesn’t have that problem of neighbouring. I think this could be good to show initially (so it is clear where the hotspots and relevant boroughs are as I think this is more important for policy than MSOAs)</p>
+<div id="45a3700b" class="cell" data-execution_count="17">
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Mapping_Location_of_Properties_files/figure-html/cell-18-output-1.png" width="950" height="761" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>This map uses the standard Getis–Ord Gi* method with Queen contiguity and a 95% confidence threshold, which is widely accepted in spatial analysis. The input values are normalized by borough area (per km²), ensuring fair comparison across differently sized regions. While this conservative approach may underdetect coldspots, it ensures statistical rigor and avoids overinterpreting weak patterns. For exploratory purposes, a relaxed threshold (e.g.&nbsp;90%) can be used in parallel to surface borderline cases.</p>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

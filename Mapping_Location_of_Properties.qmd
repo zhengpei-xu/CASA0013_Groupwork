@@ -1,0 +1,761 @@
+---
+title: "Spatial Analysis of Multi‑Host Airbnb Activity in London"
+jupyter: python3
+author: "Christian Mulder"
+affiliation: "University College London (UCL), MSc Urban Spatial Science"
+date: "November 2025"
+documentclass: article
+fontsize: 12pt
+linestretch: 1.5
+geometry: margin=1in
+mainfont: Times New Roman
+sansfont: Arial
+monofont: Courier New
+execute:
+  echo: false     # hide code
+  warning: false  # hide warnings
+  error: false    # hide errors
+header-includes:
+  - \usepackage{setspace}
+  - \usepackage{sectsty}
+  - \sectionfont{\normalsize}
+---
+
+To begin with, I will start by reading in all the necessary files, which are the listings CSV, the borough boundary data, and then the MSOA data.
+```{python}
+import pandas as pd
+import geopandas as gpd
+import matplotlib.pyplot as plt
+
+# --- Load tabular listings data ---
+df_l = pd.read_csv("listings.csv")
+
+# --- Load London boundary shapefiles ---
+boroughs = gpd.read_file(
+    "statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp"
+)
+msoas = gpd.read_file(
+    "statistical-gis-boundaries-london/ESRI/MSOA_2011_London_gen_MHW.shp"
+)
+
+# --- Convert listings to GeoDataFrame ---
+gdf_l = gpd.GeoDataFrame(
+    df_l,
+    geometry=gpd.points_from_xy(df_l.longitude, df_l.latitude),
+    crs="EPSG:4326"  # WGS84
+).to_crs(epsg=27700)  # British National Grid
+
+# --- Identify professional hosts (>=2 listings) ---
+host_counts = df_l["host_id"].value_counts()
+multi_hosts = host_counts[host_counts >= 2].index
+df_multi_hosts = df_l[df_l["host_id"].isin(multi_hosts)]
+
+# --- Convert professional hosts to GeoDataFrame ---
+gdf_multi_hosts = gpd.GeoDataFrame(
+    df_multi_hosts,
+    geometry=gpd.points_from_xy(df_multi_hosts.longitude, df_multi_hosts.latitude),
+    crs="EPSG:4326"
+).to_crs(epsg=27700)
+
+# --- Map 1: All listings over borough + MSOA boundaries ---
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)
+msoas.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.5)
+gdf_l.plot(ax=ax, markersize=2, color="blue", alpha=0.6)
+ax.set_title("All Listings over Borough (red) and MSOA (black) Boundaries", fontsize=14)
+ax.axis("off")
+plt.show()
+
+# --- Map 2: Professional hosts (>=2 listings) over borough + MSOA boundaries ---
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)
+msoas.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.5)
+gdf_multi_hosts.plot(ax=ax, markersize=2, color="green", alpha=0.6)
+ax.set_title("Professional Hosts (>=2 listings) over Borough (red) and MSOA (black) Boundaries", fontsize=14)
+ax.axis("off")
+plt.show()
+
+```
+
+In order to further analyse, I will take these following steps: 
+- Counts and distributions (MSOA/borough, normal/log).
+- Normality checks (Shapiro–Wilk).
+- Gini coefficient (MSOA and borough) → here it acts as a descriptive inequality measure alongside distributions.
+- Density visualization (KDE attempt, maps).
+- Global spatial autocorrelation (Moran’s I).
+- Neighbor definition comparison (KNN vs Distance Band).
+- Spatial Error Model.
+- *Local clustering (Getis–Ord Gi)**.
+- Return to inequality in discussion → you can revisit the Gini in the conclusion, tying it to spatial clustering.
+
+\----------
+
+## Counts and Distributions
+First, the following two maps will be the distribution of counts (tallied per area) for the Borough and MSOA data.
+
+#####MSOA: 
+```{python}
+# --- Imports ---
+import numpy as np
+import matplotlib.pyplot as plt
+import geopandas as gpd
+
+# --- MSOA analysis ---
+# Spatial join: assign professional listings to MSOAs
+gdf_msoa_multi = gpd.sjoin(gdf_multi_hosts, msoas, how="left", predicate="within")
+
+# Aggregate counts per MSOA
+multi_counts_msoa = gdf_msoa_multi.groupby("MSOA11NM").size().reset_index(name="multi_count")
+
+# Merge counts back into MSOA polygons
+msoas_multi = msoas.merge(multi_counts_msoa, on="MSOA11NM", how="left")
+msoas_multi["multi_count"] = msoas_multi["multi_count"].fillna(0)
+
+# Plot MSOA choropleth (raw counts)
+fig, ax = plt.subplots(figsize=(12, 12))
+msoas_multi.plot(
+    column="multi_count",
+    cmap="Reds",
+    linewidth=0.2,
+    edgecolor="black",
+    legend=True,
+    ax=ax
+)
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)  # borough outlines
+ax.set_title("Multi‑host Listings per MSOA (boroughs in red)", fontsize=14)
+ax.axis("off")
+plt.show()
+```
+
+##### Borough: 
+```{python}
+# --- Borough analysis ---
+# Spatial join: assign professional listings to boroughs
+gdf_borough_multi = gpd.sjoin(gdf_multi_hosts, boroughs, how="left", predicate="within")
+
+# Aggregate counts per borough
+multi_counts_borough = gdf_borough_multi.groupby("NAME").size().reset_index(name="multi_count")
+
+# Merge counts back into borough polygons
+boroughs_multi = boroughs.merge(multi_counts_borough, on="NAME", how="left")
+boroughs_multi["multi_count"] = boroughs_multi["multi_count"].fillna(0)
+
+# Plot borough choropleth (raw counts)
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs_multi.plot(
+    column="multi_count",
+    cmap="Blues",
+    linewidth=0.8,
+    edgecolor="black",
+    legend=True,
+    ax=ax
+)
+ax.set_title("Multi‑host Listings per Borough", fontsize=14)
+ax.axis("off")
+plt.show()
+```
+
+Now that I have plotted these, I want to create a basic distribution analysis.
+
+#### Distribution table:
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+# Extract counts of multi-hosts per MSOA
+counts = msoas_multi["multi_count"].values
+
+# Compute mean and standard deviation
+mean = np.mean(counts)
+std = np.std(counts)
+
+# Plot histogram of observed counts
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.hist(counts, bins=100, density=True, alpha=0.6, color="skyblue", edgecolor="black")
+
+# Overlay normal distribution curve
+x = np.linspace(counts.min(), counts.max(), 200)
+pdf = norm.pdf(x, loc=mean, scale=std)
+ax.plot(x, pdf, "r-", lw=2, label="Normal distribution fit")
+
+# Labels and title
+ax.set_title("Distribution of Multi‑host Listings per MSOA", fontsize=14)
+ax.set_xlabel("Multi‑host count per MSOA")
+ax.set_ylabel("Density")
+ax.legend()
+
+plt.show()
+```
+
+Just to test whether this is a bad skew (although I would say the diagram is pretty obvious...), I will do a Shapiro-Wilk p-value test: 
+```{python}
+from scipy.stats import shapiro
+stat, p = shapiro(msoas_multi["multi_count"])
+print(f"Shapiro-Wilk p-value: {p}")
+```
+
+Because from this bar chart of the normal distribution, which is very extremely positively skewed, I want to try creating a log-scaled histogram to see if that changes anything. 
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+# Extract counts of multi-hosts per MSOA
+counts = msoas_multi["multi_count"].values
+
+# Apply log transformation (log(1+x) to avoid log(0))
+log_counts = np.log1p(counts)
+
+# Compute mean and standard deviation of log-transformed counts
+mean = np.mean(log_counts)
+std = np.std(log_counts)
+
+# Plot histogram of log-transformed counts
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.hist(log_counts, bins=40, density=True, alpha=0.6, color="skyblue", edgecolor="black")
+
+# Overlay normal distribution curve
+x = np.linspace(log_counts.min(), log_counts.max(), 200)
+pdf = norm.pdf(x, loc=mean, scale=std)
+ax.plot(x, pdf, "r-", lw=2, label="Normal distribution fit")
+
+# Labels and title
+ax.set_title("Log-Scaled Distribution of Multi‑host Listings per MSOA", fontsize=14)
+ax.set_xlabel("log(1 + multi-host count)")
+ax.set_ylabel("Density")
+ax.legend()
+
+plt.show()
+```
+And again let's test the Shapiro-Wilk p-value:
+```{python}
+
+log_counts = np.log1p(msoas_multi["multi_count"])
+stat_log, p_log = shapiro(log_counts)
+print(f"Shapiro-Wilk p-value (log counts): {p_log:.4f}")
+```
+
+The Shapiro–Wilk test on the raw MSOA counts returned a p‑value of 2.3\times 10^{-46}, providing overwhelming evidence against normality. This confirms what the histogram suggested: the distribution of multi‑host listings is extremely skewed. After applying a log transformation, the p‑value increased to 0.0300. Although this is still below the conventional 0.05 threshold (meaning the log‑transformed data cannot be considered perfectly normal), the improvement is substantial. The log scale reduces skewness and brings the distribution closer to normality, making it more suitable for visualization and interpretation, especially when comparing areas with smaller counts.
+
+To better visualise the distribution, the following map applies a log scale transformation. This adjustment reduces the dominance of areas with exceptionally high counts (such as Westminster), allowing spatial patterns in other boroughs to remain visible and interpretable.
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ====== MSOA map with log scale ======
+# Create a log-transformed column (add 1 to avoid log(0))
+msoas_multi["log_multi_count"] = np.log1p(msoas_multi["multi_count"])
+
+fig, ax = plt.subplots(figsize=(12, 12))
+msoas_multi.plot(
+    column="log_multi_count",
+    cmap="Blues",
+    linewidth=0.2,
+    edgecolor="black",
+    legend=True,
+    ax=ax
+)
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)  # borough outlines
+ax.set_title("Multi‑host Listings per MSOA (log scale)", fontsize=14)
+ax.axis("off")
+plt.show()
+
+
+# ====== Borough map with log scale ======
+boroughs_multi["log_multi_count"] = np.log1p(boroughs_multi["multi_count"])
+
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs_multi.plot(
+    column="log_multi_count",
+    cmap="Blues",
+    linewidth=0.8,
+    edgecolor="black",
+    legend=True,
+    ax=ax
+)
+ax.set_title("Multi‑host Listings per Borough (log scale)", fontsize=14)
+ax.axis("off")
+plt.show()
+```
+
+#### Gini
+I will now do a quick Gini test, which measures how unevenly multi‑host listings are distributed across areas. A higher Gini value indicates that activity is concentrated in fewer places, while a lower value suggests a more even spread.
+
+The Gini coefficient ranges from 0 (perfect equality) to 1 (maximum inequality), with values above about 0.5 generally considered high.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- Step 1: Extract borough-level counts ---
+counts_borough = boroughs_multi["multi_count"].values  # use the correct column name
+
+# --- Step 2: Gini coefficient function ---
+def gini(array):
+    array = np.sort(array)
+    n = len(array)
+    cumvals = np.cumsum(array)
+    return (n + 1 - 2 * np.sum(cumvals) / cumvals[-1]) / n
+
+# --- Step 3: Calculate Gini ---
+gini_borough = gini(counts_borough)
+
+# --- Step 4: Plot sorted distribution ---
+sorted_counts = np.sort(counts_borough)
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.bar(range(len(sorted_counts)), sorted_counts, color="darkorange")
+ax.set_title("Distribution of Multi-host Listings Across Boroughs", fontsize=14)
+ax.set_xlabel("Boroughs (sorted by count)")
+ax.set_ylabel("Number of Listings")
+
+# Annotate with Gini value (no print statement)
+ax.text(
+    0.98, 0.96, f"Gini coefficient:\n{gini_borough:.3f}",
+    transform=ax.transAxes,
+    fontsize=12,
+    verticalalignment='top',
+    horizontalalignment='left',
+    bbox=dict(facecolor='white', edgecolor='black')
+)
+
+plt.tight_layout()
+plt.show()
+```
+
+The Gini coefficient of 0.503 at the borough scale indicates a moderate degree of inequality in the distribution of multi‑host listings across London. Some boroughs host substantially more multi‑host activity than others, but the overall pattern is less extreme than at finer spatial resolutions.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- Step 1: Extract MSOA-level counts ---
+counts_msoa = msoas_multi["multi_count"].values  # use the correct column name
+
+# --- Step 2: Gini coefficient function ---
+def gini(array):
+    array = np.sort(array)
+    n = len(array)
+    cumvals = np.cumsum(array)
+    return (n + 1 - 2 * np.sum(cumvals) / cumvals[-1]) / n
+
+# --- Step 3: Calculate Gini ---
+gini_msoa = gini(counts_msoa)
+
+# --- Step 4: Plot sorted distribution ---
+sorted_counts = np.sort(counts_msoa)
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.bar(range(len(sorted_counts)), sorted_counts, color="darkorange")
+ax.set_title("Distribution of Multi-host Listings Across MSOAs", fontsize=14)
+ax.set_xlabel("MSOAs (sorted by count)")
+ax.set_ylabel("Number of Listings")
+
+# Annotate with Gini value (no print statement)
+ax.text(
+    0.98, 0.96, f"Gini coefficient:\n{gini_msoa:.3f}",
+    transform=ax.transAxes,
+    fontsize=12,
+    verticalalignment='top',
+    horizontalalignment='left',
+    bbox=dict(facecolor='white', edgecolor='black')
+)
+
+plt.tight_layout()
+plt.show()
+```
+
+At the MSOA scale, the Gini coefficient rises to 0.627, revealing a much higher degree of spatial inequality. This shows that inequality is not only present between boroughs, but also concentrated within them: a relatively small number of MSOAs account for a disproportionately large share of multi‑host listings, while the majority contain very few or none. In other words, hotspots of multi‑host activity emerge at the neighbourhood level, highlighting that regulation or policy responses cannot rely solely on borough‑wide averages but must account for highly localized concentrations.
+
+\----------
+## Autocorrelation & Point Pattern Analysis 
+
+#### KDE
+Kernel Density Estimation (KDE) allows you to move beyond raw counts by creating a smooth surface that highlights where multi‑host listings are most concentrated. This helps reveal localized hotspots and spatial patterns that might be obscured when only looking at aggregated counts. 
+
+```{python} 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# --- Extract projected coordinates for Seaborn ---
+x = gdf_multi_hosts.geometry.x
+y = gdf_multi_hosts.geometry.y
+
+# --- Plot KDE with borough boundaries ---
+fig, ax = plt.subplots(figsize=(12, 12))
+
+# Plot borough outlines
+boroughs.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=1.2)
+
+# Seaborn KDE (shaded density only, no points)
+sns.kdeplot(
+    x=x, y=y,
+    fill=True,          # shaded density
+    cmap="viridis",
+    alpha=0.6,
+    bw_adjust=0.5,      # adjust smoothing (lower = more detail, higher = smoother)
+    ax=ax
+)
+
+ax.set_title("Seaborn KDE of Multi-host Listings", fontsize=14)
+ax.set_aspect("equal")
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+Now the following map has decided on fixd boundaries: 
+
+So I think this simpler map might be better for displaying a simplified version of the KDE considering who we are presenting it to. Howwever, I will need to continue working on this, as the heat map does not seem to correspond somehow with the actual results, so maybe I have made it too smooth and diluted in my attempt to accurately match it to the boundary lines. So it will need some more work. 
+
+Now because I find that both these maps look like they're a little bit off when I'm comparing them to the count (although that is possible in KDE because it is different) I will definitely continue from here. For the remaining autocorrelation I will first do Moran's I:
+
+#### Moran's I Test (Local and Global Outcomes)
+
+```{python}
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+from shapely.geometry import Polygon, MultiPolygon
+from libpysal.weights import KNN
+from esda.moran import Moran
+
+# --- CONFIG ---
+MSOA_ID_COL = "MSOA11CD"   # change if your MSOA ID column is different
+K_NEIGHBORS = 8            # k for KNN weights; 8 is a good default for urban grids
+
+# --- INPUTS (assumed already loaded in memory) ---
+# msoas: GeoDataFrame of MSOA polygons with column MSOA_ID_COL and geometry
+# gdf_multi_hosts: GeoDataFrame of multi-host listing points with geometry
+
+# 1) Project to a metric CRS (British National Grid is standard for London)
+msoas = msoas.to_crs(epsg=27700)
+gdf_multi_hosts = gdf_multi_hosts.to_crs(msoas.crs)
+
+# 2) Clean geometries to ensure valid adjacency
+# - buffer(0) repairs invalid polygons
+# - explode ensures consistent Polygon parts
+msoas = msoas.copy()
+msoas["geometry"] = msoas["geometry"].buffer(0)
+msoas = msoas.explode(index_parts=False).reset_index(drop=True)
+msoas = msoas[~msoas.is_empty & msoas.geometry.notna()].copy()
+
+# 3) Spatial join: assign each listing to an MSOA, then count
+joined = gpd.sjoin(
+    gdf_multi_hosts,
+    msoas[[MSOA_ID_COL, "geometry"]],
+    predicate="within",
+    how="inner"
+)
+
+msoa_counts = (
+    joined.groupby(MSOA_ID_COL).size().reset_index(name="count")
+)
+
+# Merge counts back to MSOA polygons; fill missing with 0
+msoas_counted = msoas.merge(msoa_counts, on=MSOA_ID_COL, how="left")
+msoas_counted["count"] = msoas_counted["count"].fillna(0).astype(int)
+
+# Ensure clean index alignment for weights and values
+msoas_counted = msoas_counted.reset_index(drop=True)
+
+# 4) Build spatial weights (KNN avoids island problems)
+# Queen contiguity can fail with tiny topology issues; KNN guarantees neighbors.
+w = KNN.from_dataframe(msoas_counted, k=K_NEIGHBORS, use_index=True)
+w.transform = "r"  # row-standardize for Moran's I
+
+# 5) Run Moran’s I on MSOA counts
+y = msoas_counted["count"].to_numpy()
+mi = Moran(y, w)  # default 999 permutations
+
+print(f"Moran's I: {mi.I:.4f}")
+print(f"p-value (permutation): {mi.p_sim:.4f}")
+print(f"z-score (normal approx): {mi.z_norm:.3f}")
+
+# 6) Optional: quick diagnostics
+# Check that KNN created neighbors for all observations
+no_neighbor = sum(len(nbrs) == 0 for nbrs in w.neighbors.values())
+print(f"MSOAs with zero neighbors (should be 0): {no_neighbor}")
+
+# 7) Optional: visualize counts and Moran scatter (manual, avoids ipywidgets/tqdm warnings)
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+
+# 7a) Choropleth of counts
+msoas_counted.plot(
+    column="count",
+    ax=axes[0],
+    cmap="viridis",
+    linewidth=0.4,
+    edgecolor="black",
+    legend=True
+)
+axes[0].set_title("Multi-host listing counts by MSOA")
+axes[0].axis("off")
+
+# 7b) Moran scatter (standardized values vs. spatial lag)
+# Compute spatial lag: Wy (row-standardized weights already applied)
+# libpysal provides w.transform='r' so spatial lag is simple matrix multiply via weights
+# We'll build lag manually for transparency
+lag_y = np.array([np.sum(y[w.neighbors[i]]) / (len(w.neighbors[i]) or 1) for i in range(len(y))])
+
+# Standardize y and lag_y
+y_std = (y - y.mean()) / y.std()
+lag_y_std = (lag_y - lag_y.mean()) / lag_y.std()
+
+axes[1].scatter(y_std, lag_y_std, s=12, alpha=0.7, color="tab:blue")
+axes[1].axhline(0, color="grey", lw=0.8)
+axes[1].axvline(0, color="grey", lw=0.8)
+axes[1].set_title("Moran's I scatter (counts per MSOA)")
+axes[1].set_xlabel("Standardized counts")
+axes[1].set_ylabel("Standardized spatial lag of counts")
+
+plt.tight_layout()
+plt.show()
+```
+
+Moran’s I of 0.6465 with a p-value of 0.001 indicates strong, statistically significant spatial clustering of multi-host listings across London MSOAs. High-count areas are surrounded by other high-count areas, confirming that the distribution is far from random. This suggests concentrated zones of multi-host activity that may warrant targeted policy attention.
+
+Having confirmed spatial autocorrelation with Moran’s I, I will now test the spatial lag and error models to assess whether the variation in multi-host density is better explained by neighboring effects or unobserved spatial structure in the census-like boundary data.
+
+#### Spatial Lag Model
+```{python}
+from spreg import ML_Lag
+
+# Dependent variable: counts
+y = msoas_counted["count"].to_numpy()
+
+# No predictors → just intercept
+X = np.ones((len(y), 1))
+
+# Ensure weights are row-standardized
+w.transform = "r"
+
+# Fit spatial lag model
+lag_model = ML_Lag(y, X, w=w, name_y="count", name_x=["Intercept"])
+
+# Print results
+print("\nSpatial Lag Model (counts only)")
+print(f"ρ (spatial lag coefficient): {lag_model.rho:.4f}")
+print(f"Pseudo R²: {lag_model.pr2:.4f}")
+print(f"AIC: {lag_model.aic:.2f}")
+print(f"Intercept: {lag_model.betas[0][0]:.4f}")
+
+# Attach predicted values and residuals for mapping
+msoas_counted["predicted_lag"] = lag_model.predy
+msoas_counted["residuals_lag"] = lag_model.u
+```
+
+```{python} 
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+
+# --- Map of predicted values ---
+msoas_counted.plot(
+    column="predicted_lag",
+    cmap="plasma",
+    linewidth=0.4,
+    edgecolor="black",
+    legend=True,
+    ax=axes[0]
+)
+axes[0].set_title("Predicted multi-host counts (spatial lag model)")
+axes[0].axis("off")
+
+# --- Map of residuals ---
+msoas_counted.plot(
+    column="residuals_lag",
+    cmap="coolwarm",
+    linewidth=0.4,
+    edgecolor="black",
+    legend=True,
+    ax=axes[1]
+)
+axes[1].set_title("Residuals from spatial lag model")
+axes[1].axis("off")
+
+plt.tight_layout()
+plt.show()
+```
+
+While I ran the spatial lag model to explore potential spillover effects between neighboring MSOAs, I don’t believe it adds meaningful insight in this context. Just because two areas are adjacent doesn’t imply that multi-host listing counts in one directly influence the other — these are not inherently relational phenomena. The clustering observed is more likely due to shared local conditions than spatial dependence, so including the lag model may misrepresent the underlying dynamics.
+
+Since adjacency alone doesn’t imply causal influence between MSOAs, I turn instead to a spatial error model to capture unobserved spatial clustering in the residuals.
+
+#### Spatial Error Model
+```{python}
+import numpy as np
+from libpysal.weights import KNN
+from spreg import GM_Error
+
+# --- Merge counts into your MSOA shapefile ---
+msoas_full = msoas.merge(
+    msoas_counted[["MSOA11CD", "count"]],
+    on="MSOA11CD",
+    how="left"
+).fillna({"count": 0})
+
+# --- Dependent variable: multi-host counts ---
+y = msoas_full["count"].values.reshape((-1, 1))
+
+# --- Explanatory variables: socio-demographic attributes from shapefile ---
+X = msoas_full[["USUALRES", "POPDEN", "HHOLDS", "AVHHOLDSZ"]].values
+
+# --- Spatial weights (KNN avoids islands) ---
+w = KNN.from_dataframe(msoas_full, k=8)
+w.transform = "r"
+
+# --- Spatial error model ---
+model = GM_Error(y, X, w=w,
+                 name_y="multi_host_count",
+                 name_x=["USUALRES", "POPDEN", "HHOLDS", "AVHHOLDSZ"])
+
+print(model.summary)
+```
+
+The model shows that while household variables like number of households and average household size are positively associated with multi‑host listings, population and density are negatively associated. However, the most striking result is the very high and significant spatial error coefficient (lambda ≈ 0.93), which indicates that even after accounting for these demographic factors, there remains strong spatial autocorrelation in the residuals. In other words, clustering of multi‑host activity is not fully explained by population or housing characteristics alone, but is (obvioiusly) impacted by another variable. If we could find some data on tourism, housing cost, or anything else like this that could definitely further expand this.
+
+However, crucially this above output is not very presentable to a mayor. So while we can maybe discuss it, saying our own research showed that these variables used show that there are other factors that need to be accounted for, I think it would be better not to show the output as it might not be visually pleasing (like even I don't wanna look at it realistically).
+
+#### Getis-Ord Gi
+Next, I will use the Getis‑Ord Gi statistic to identify local hotspots and coldspots of multi‑host activity.
+```{python}
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+from libpysal.weights import KNN
+from esda.getisord import G_Local
+import matplotlib.patches as mpatches
+
+# --- Settings ---
+MSOA_ID_COL = "MSOA11CD"
+K_NEIGHBORS = 5
+
+# --- Spatial weights ---
+w = KNN.from_dataframe(msoas_counted, k=K_NEIGHBORS, use_index=True)
+w.transform = "r"
+
+# --- Run Gi* statistic (safe settings) ---
+y = msoas_counted["count"].astype(float).values
+gi = G_Local(
+    y, 
+    w, 
+    permutations=499,   # fewer permutations for speed & stability
+    n_jobs=1            # single-threaded to avoid worker crashes
+)
+
+# --- Add results to GeoDataFrame ---
+msoas_counted["GiZ"] = gi.Zs
+msoas_counted["GiP"] = gi.p_sim
+msoas_counted["GiSig"] = np.where(
+    (msoas_counted["GiP"] < 0.05) & (msoas_counted["GiZ"] > 0), "Hotspot",
+    np.where((msoas_counted["GiP"] < 0.05) & (msoas_counted["GiZ"] < 0), "Coldspot", "Not Significant")
+)
+
+# --- Quick preview ---
+print(msoas_counted[[MSOA_ID_COL, "count", "GiZ", "GiP", "GiSig"]].head())
+
+# --- Plot ---
+fig, ax = plt.subplots(figsize=(10, 10))
+
+color_map = {
+    "Hotspot": "#d7191c",         # Red
+    "Coldspot": "#2c7bb6",        # Blue
+    "Not Significant": "#cccccc"  # Grey
+}
+
+msoas_counted.plot(
+    ax=ax,
+    color=msoas_counted["GiSig"].map(color_map),
+    edgecolor="black",
+    linewidth=0.3
+)
+
+# --- Legend ---
+legend_patches = [
+    mpatches.Patch(color=color_map["Hotspot"], label="Hotspot"),
+    mpatches.Patch(color=color_map["Coldspot"], label="Coldspot"),
+    mpatches.Patch(color=color_map["Not Significant"], label="Not Significant")
+]
+ax.legend(handles=legend_patches, title="Gi* Results", loc="lower left")
+
+# --- Final styling ---
+ax.set_title("Getis–Ord Gi* Hotspots of Multi-host Properties", fontsize=14)
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+So because the MSOA data for some reason doesn't recognise that the polygons are connected to one another (so it thinks they are seperate) I had to define the number of neighbours (which I set to 5 so it isn't too many and over the top of a strange pattern) but this does mean this map is not entirely accurate. It is still interesting though.
+
+Now I will do the same with the boroughs, which doesn't have that problem of neighbouring. I think this could be good to show initially (so it is clear where the hotspots and relevant boroughs are as I think this is more important for policy than MSOAs)
+
+```{python}
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+from libpysal.weights import Queen
+from esda.getisord import G_Local
+import matplotlib.patches as mpatches
+
+# --- Step 1: CRS alignment ---
+gdf_multi_hosts = gdf_multi_hosts.to_crs(epsg=27700)
+boroughs = boroughs.to_crs(epsg=27700)
+
+# --- Step 2: Spatial join to assign listings to boroughs ---
+joined_b = gpd.sjoin(
+    gdf_multi_hosts,
+    boroughs[["NAME", "geometry"]],
+    how="left",
+    predicate="within"
+)
+
+# --- Step 3: Count multi-host listings per borough ---
+borough_counts = joined_b.groupby("NAME").size().reset_index(name="raw_count")
+
+# --- Step 4: Merge counts back to borough polygons ---
+boroughs_counted = boroughs.merge(borough_counts, on="NAME", how="left")
+boroughs_counted["raw_count"] = boroughs_counted["raw_count"].fillna(0).astype(int)
+
+# --- Step 5: Normalize by borough area (per km²) ---
+boroughs_counted["area_km2"] = boroughs_counted.geometry.area / 1e6
+boroughs_counted["count_norm"] = boroughs_counted["raw_count"] / boroughs_counted["area_km2"]
+
+# --- Step 6: Build Queen contiguity weights ---
+w = Queen.from_dataframe(boroughs_counted)
+w.transform = "r"
+
+# --- Step 7: Run Gi* on normalized counts (safe settings) ---
+y = boroughs_counted["count_norm"].astype(float).values
+gi = G_Local(y, w, permutations=499, n_jobs=1)  # safer defaults
+
+# --- Step 8: Attach Gi* results ---
+boroughs_counted["GiZ"] = gi.Zs
+boroughs_counted["GiP"] = gi.p_sim
+boroughs_counted["GiSig"] = np.where(
+    (boroughs_counted["GiP"] < 0.05) & (boroughs_counted["GiZ"] > 0), "Hotspot",
+    np.where((boroughs_counted["GiP"] < 0.05) & (boroughs_counted["GiZ"] < 0), "Coldspot", "Not Significant")
+)
+
+# --- Step 9: Map with legend ---
+fig, ax = plt.subplots(figsize=(10, 10))
+color_map = {"Hotspot": "#d7191c", "Coldspot": "#2c7bb6", "Not Significant": "#cccccc"}
+
+boroughs_counted.plot(
+    ax=ax,
+    color=boroughs_counted["GiSig"].map(color_map),
+    edgecolor="black",
+    linewidth=0.5
+)
+
+legend_patches = [mpatches.Patch(color=color_map[k], label=k) for k in color_map]
+ax.legend(handles=legend_patches, title="Gi* Classification", loc="lower left")
+
+ax.set_title("Getis–Ord Gi* Hotspots of Multi-host Properties (Normalized by Area)", fontsize=14)
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+This map uses the standard Getis–Ord Gi* method with Queen contiguity and a 95% confidence threshold, which is widely accepted in spatial analysis. The input values are normalized by borough area (per km²), ensuring fair comparison across differently sized regions. While this conservative approach may underdetect coldspots, it ensures statistical rigor and avoids overinterpreting weak patterns. For exploratory purposes, a relaxed threshold (e.g. 90%) can be used in parallel to surface borderline cases.
