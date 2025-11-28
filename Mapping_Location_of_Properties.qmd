@@ -19,6 +19,13 @@ header-includes:
   - \usepackage{setspace}
   - \usepackage{sectsty}
   - \sectionfont{\normalsize}
+format:
+  pdf:
+    fig-width: 6.5
+    fig-height: 4.5
+    fig-pos: "H"
+    fig-align: center
+    keep-figures: true
 ---
 
 To begin with, I will start by reading in all the necessary files, which are the listings CSV, the borough boundary data, and then the MSOA data.
@@ -141,7 +148,7 @@ boroughs_multi = boroughs.merge(multi_counts_borough, on="NAME", how="left")
 boroughs_multi["multi_count"] = boroughs_multi["multi_count"].fillna(0)
 
 # Plot borough choropleth (raw counts)
-fig, ax = plt.subplots(figsize=(12, 12))
+fig, ax = plt.subplots(figsize=(12, 12), constrained_layout=True)
 boroughs_multi.plot(
     column="multi_count",
     cmap="Blues",
@@ -155,7 +162,7 @@ ax.axis("off")
 plt.show()
 ```
 
-Now that I have plotted these, I want to create a basic distribution analysis.
+
 
 #### Distribution table:
 ```{python}
@@ -189,6 +196,7 @@ plt.show()
 ```
 
 Just to test whether this is a bad skew (although I would say the diagram is pretty obvious...), I will do a Shapiro-Wilk p-value test: 
+
 ```{python}
 from scipy.stats import shapiro
 stat, p = shapiro(msoas_multi["multi_count"])
