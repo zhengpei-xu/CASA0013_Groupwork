@@ -82,7 +82,7 @@ ul.task-list li input[type="checkbox"] {
 
 
 <p>To begin with, I will start by reading in all the necessary files, which are the listings CSV, the borough boundary data, and then the MSOA data.</p>
-<div id="d33efb3c" class="cell" data-execution_count="1">
+<div id="233e8ac9" class="cell" data-execution_count="1">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -104,7 +104,7 @@ ul.task-list li input[type="checkbox"] {
 <h2 class="anchored" data-anchor-id="counts-and-distributions">Counts and Distributions</h2>
 <p>First, the following two maps will be the distribution of counts (tallied per area) for the Borough and MSOA data.</p>
 <p>#####MSOA:</p>
-<div id="d9f10c45" class="cell" data-execution_count="2">
+<div id="46c4afab" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -115,7 +115,7 @@ ul.task-list li input[type="checkbox"] {
 </div>
 <section id="borough" class="level5">
 <h5 class="anchored" data-anchor-id="borough">Borough:</h5>
-<div id="d621f1a0" class="cell" data-execution_count="3">
+<div id="d0401899" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -128,7 +128,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="distribution-table" class="level4">
 <h4 class="anchored" data-anchor-id="distribution-table">Distribution table:</h4>
-<div id="2a3bd42e" class="cell" data-execution_count="4">
+<div id="7164e5ef" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -138,13 +138,13 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 <p>Just to test whether this is a bad skew (although I would say the diagram is pretty obvious…), I will do a Shapiro-Wilk p-value test:</p>
-<div id="e6a1299b" class="cell" data-execution_count="5">
+<div id="7b79c842" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-stdout">
 <pre><code>Shapiro-Wilk p-value: 2.327478492219949e-46</code></pre>
 </div>
 </div>
 <p>Because from this bar chart of the normal distribution, which is very extremely positively skewed, I want to try creating a log-scaled histogram to see if that changes anything.</p>
-<div id="a47ada7f" class="cell" data-execution_count="6">
+<div id="c08246ad" class="cell" data-execution_count="6">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -154,14 +154,14 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 <p>And again let’s test the Shapiro-Wilk p-value:</p>
-<div id="4ca1d2ec" class="cell" data-execution_count="7">
+<div id="dd247095" class="cell" data-execution_count="7">
 <div class="cell-output cell-output-stdout">
 <pre><code>Shapiro-Wilk p-value (log counts): 0.0300</code></pre>
 </div>
 </div>
 <p>The Shapiro–Wilk test on the raw MSOA counts returned a p‑value of 2.3^{-46}, providing overwhelming evidence against normality. This confirms what the histogram suggested: the distribution of multi‑host listings is extremely skewed. After applying a log transformation, the p‑value increased to 0.0300. Although this is still below the conventional 0.05 threshold (meaning the log‑transformed data cannot be considered perfectly normal), the improvement is substantial. The log scale reduces skewness and brings the distribution closer to normality, making it more suitable for visualization and interpretation, especially when comparing areas with smaller counts.</p>
 <p>To better visualise the distribution, the following map applies a log scale transformation. This adjustment reduces the dominance of areas with exceptionally high counts (such as Westminster), allowing spatial patterns in other boroughs to remain visible and interpretable.</p>
-<div id="515045a0" class="cell" data-execution_count="8">
+<div id="1d2a2591" class="cell" data-execution_count="8">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -182,7 +182,7 @@ ul.task-list li input[type="checkbox"] {
 <h4 class="anchored" data-anchor-id="gini">Gini</h4>
 <p>I will now do a quick Gini test, which measures how unevenly multi‑host listings are distributed across areas. A higher Gini value indicates that activity is concentrated in fewer places, while a lower value suggests a more even spread.</p>
 <p>The Gini coefficient ranges from 0 (perfect equality) to 1 (maximum inequality), with values above about 0.5 generally considered high.</p>
-<div id="a750f511" class="cell" data-execution_count="9">
+<div id="6ee82a00" class="cell" data-execution_count="9">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -192,7 +192,7 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 <p>The Gini coefficient of 0.503 at the borough scale indicates a moderate degree of inequality in the distribution of multi‑host listings across London. Some boroughs host substantially more multi‑host activity than others, but the overall pattern is less extreme than at finer spatial resolutions.</p>
-<div id="90c6bc0f" class="cell" data-execution_count="10">
+<div id="041897cc" class="cell" data-execution_count="10">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -207,7 +207,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="kde" class="level4">
 <h4 class="anchored" data-anchor-id="kde">KDE</h4>
 <p>Kernel Density Estimation (KDE) allows you to move beyond raw counts by creating a smooth surface that highlights where multi‑host listings are most concentrated. This helps reveal localized hotspots and spatial patterns that might be obscured when only looking at aggregated counts.</p>
-<div id="c4164c8d" class="cell" data-execution_count="11">
+<div id="c9820da5" class="cell" data-execution_count="11">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -222,7 +222,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="morans-i-test-local-and-global-outcomes" class="level4">
 <h4 class="anchored" data-anchor-id="morans-i-test-local-and-global-outcomes">Moran’s I Test (Local and Global Outcomes)</h4>
-<div id="10a3841e" class="cell" data-execution_count="12">
+<div id="d6d83061" class="cell" data-execution_count="12">
 <div class="cell-output cell-output-stdout">
 <pre><code>Moran's I: 0.6465
 p-value (permutation): 0.0010
@@ -242,7 +242,7 @@ MSOAs with zero neighbors (should be 0): 0</code></pre>
 </section>
 <section id="spatial-lag-model" class="level4">
 <h4 class="anchored" data-anchor-id="spatial-lag-model">Spatial Lag Model</h4>
-<div id="0f8814e9" class="cell" data-execution_count="13">
+<div id="bb89f992" class="cell" data-execution_count="13">
 <div class="cell-output cell-output-stdout">
 <pre><code>
 Spatial Lag Model (counts only)
@@ -252,7 +252,7 @@ AIC: 10973.48
 Intercept: 5.0279</code></pre>
 </div>
 </div>
-<div id="2569a945" class="cell" data-execution_count="14">
+<div id="5d2f5b29" class="cell" data-execution_count="14">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
@@ -266,7 +266,7 @@ Intercept: 5.0279</code></pre>
 </section>
 <section id="spatial-error-model" class="level4">
 <h4 class="anchored" data-anchor-id="spatial-error-model">Spatial Error Model</h4>
-<div id="c6383dde" class="cell" data-execution_count="15">
+<div id="a715d3d7" class="cell" data-execution_count="15">
 <div class="cell-output cell-output-stdout">
 <pre><code>REGRESSION RESULTS
 ------------------
@@ -299,14 +299,14 @@ Pseudo R-squared    :      0.1214
 <section id="getis-ord-gi" class="level4">
 <h4 class="anchored" data-anchor-id="getis-ord-gi">Getis-Ord Gi</h4>
 <p>Next, I will use the Getis‑Ord Gi statistic to identify local hotspots and coldspots of multi‑host activity.</p>
-<div id="5aa007c7" class="cell" data-execution_count="16">
+<div id="811244ad" class="cell" data-execution_count="16">
 <div class="cell-output cell-output-stdout">
 <pre><code>    MSOA11CD  count       GiZ    GiP            GiSig
 0  E02000001    447  3.169964  0.002          Hotspot
 1  E02000001    447  2.227341  0.006          Hotspot
-2  E02000002      3 -0.382412  0.084  Not Significant
-3  E02000003     16 -0.369450  0.098  Not Significant
-4  E02000004      5 -0.331185  0.158  Not Significant</code></pre>
+2  E02000002      3 -0.382412  0.080  Not Significant
+3  E02000003     16 -0.369450  0.102  Not Significant
+4  E02000004      5 -0.331185  0.166  Not Significant</code></pre>
 </div>
 <div class="cell-output cell-output-display">
 <div>
@@ -318,7 +318,7 @@ Pseudo R-squared    :      0.1214
 </div>
 <p>So because the MSOA data for some reason doesn’t recognise that the polygons are connected to one another (so it thinks they are seperate) I had to define the number of neighbours (which I set to 5 so it isn’t too many and over the top of a strange pattern) but this does mean this map is not entirely accurate. It is still interesting though.</p>
 <p>Now I will do the same with the boroughs, which doesn’t have that problem of neighbouring. I think this could be good to show initially (so it is clear where the hotspots and relevant boroughs are as I think this is more important for policy than MSOAs)</p>
-<div id="45a3700b" class="cell" data-execution_count="17">
+<div id="d107db99" class="cell" data-execution_count="17">
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">

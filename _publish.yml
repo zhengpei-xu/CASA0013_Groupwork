@@ -1,0 +1,4 @@
+- source: Mapping_Location_of_Properties.qmd
+  quarto-pub:
+    - id: 2888de5e-7cb8-4bd9-9d03-d4448cef9f9e
+      url: https://chrismuld1510.quarto.pub/spatial-analysis-of-multi‑host-airbnb-activity-in-london
