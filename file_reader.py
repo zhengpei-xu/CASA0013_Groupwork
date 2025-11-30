@@ -1,7 +1,23 @@
 import pandas as pd
-import janitor
 import matplotlib.pyplot as plt
 from typing import Optional
+
+def clean_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Simplify column names:
+    - strip whitespace
+    - lowercase
+    - replace spaces with underscores
+    - remove non-alphanumeric characters
+    """
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_")
+        .str.replace(r"[^0-9a-zA-Z_]", "", regex=True)
+    )
+    return df
 
 def read_csv_url(
     url: str,
@@ -12,7 +28,8 @@ def read_csv_url(
 ) -> Optional[pd.DataFrame]:
     """
     Load a CSV file from a remote URL into a pandas DataFrame.
-    Column names are cleaned using janitor. If loading fails, prints a failure message.
+    Column names are cleaned using a local helper (replacement for janitor.clean_names).
+    If loading fails, prints a failure message.
 
     Parameters:
         url (str): Direct URL to the CSV file (.csv or .csv.gz).
@@ -31,7 +48,8 @@ def read_csv_url(
             encoding=encoding,
             dtype=dtype,
             low_memory=low_memory
-        ).clean_names()
+        )
+        df = clean_names(df)
         print(f"Successfully loaded from URL: {url}")
         print("Preview of first 5 rows and columns:")
         print(df.iloc[:5, :5])
