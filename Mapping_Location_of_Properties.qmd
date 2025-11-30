@@ -81,7 +81,6 @@ gdf_multi_hosts.plot(ax=ax, markersize=2, color="green", alpha=0.6)
 ax.set_title("Professional Hosts (>=2 listings) over Borough (red) and MSOA (black) Boundaries", fontsize=14)
 ax.axis("off")
 plt.show()
-
 ```
 
 In order to further analyse, I will take these following steps: 
