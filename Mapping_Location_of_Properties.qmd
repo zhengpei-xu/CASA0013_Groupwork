@@ -1,5 +1,5 @@
 ---
-title: "Spatial Analysis of Multi‑Host Airbnb Activity in London"
+title: "Spatial Analysis of Professional Airbnb Activity in London"
 jupyter: python3
 author: "Christian Mulder"
 affiliation: "University College London (UCL), MSc Urban Spatial Science"
@@ -57,7 +57,7 @@ gdf_l = gpd.GeoDataFrame(
 # --- Identify professional hosts ---
 prof_hosts = df_l[
     (df_l["host_listings_count"] >= 2) & 
-    (df_l["availability_365"] >= 300)
+    (df_l["availability_365"] >= 90)
 ]["host_id"].unique()
 
 df_prof_hosts = df_l[df_l["host_id"].isin(prof_hosts)]
@@ -84,7 +84,7 @@ boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)
 msoas.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.5)
 gdf_prof_hosts.plot(ax=ax, markersize=2, color="green", alpha=0.6)
 ax.set_title(
-    "Professional Hosts (>=2 listings AND availability >=300 days) over Borough (red) and MSOA (black) Boundaries",
+    "Professional Hosts (>=2 listings AND availability >=90 days) over Borough (red) and MSOA (black) Boundaries",
     fontsize=14
 )
 ax.axis("off")
@@ -710,12 +710,13 @@ from esda.getisord import G_Local
 import matplotlib.patches as mpatches
 
 # ====== Step 1: CRS alignment ======
-gdf_multi_hosts = gdf_multi_hosts.to_crs(epsg=27700)
+# Project both prof-host listings and borough boundaries to British National Grid
+gdf_prof_hosts = gdf_prof_hosts.to_crs(epsg=27700) 
 boroughs = boroughs.to_crs(epsg=27700)
 
 # ====== Step 2: Spatial join to assign listings to boroughs ======
 joined_b = gpd.sjoin(
-    gdf_multi_hosts,
+    gdf_prof_hosts,
     boroughs[["NAME", "geometry"]],
     how="left",
     predicate="within"
@@ -728,7 +729,7 @@ borough_counts = joined_b.groupby("NAME").size().reset_index(name="raw_count")
 boroughs_counted = boroughs.merge(borough_counts, on="NAME", how="left")
 boroughs_counted["raw_count"] = boroughs_counted["raw_count"].fillna(0).astype(int)
 
-# ====== Step 5: Normalize by borough area (per km²) ======
+# ====== Step 5: Normalize counts by borough area (per km²) ======
 boroughs_counted["area_km2"] = boroughs_counted.geometry.area / 1e6
 boroughs_counted["count_norm"] = boroughs_counted["raw_count"] / boroughs_counted["area_km2"]
 
@@ -763,6 +764,7 @@ boroughs_counted.plot(
     linewidth=0.5
 )
 
+# Add legend
 legend_patches = [mpatches.Patch(color=color_map[k], label=k) for k in color_map]
 ax.legend(handles=legend_patches, title="Gi* Classification", loc="lower left")
 
