@@ -154,7 +154,7 @@ Try not to show too much of this as I don't think the mayor would be very intere
 A central challenge in regulating short-term rentals and Airbnb is determining when the scale or behaviour of activity can be considered "out of control". The literature identifies three broad indicators that help establish this threshold. The first is breaches of existing regulations, for example listings that exceed the 90-day annual limit (Rosena and Lees, 2021). The second is evidence of commercial rather than occasional hosting, which is often reflected in the presence of multi-listing hosts who operate multiple properties and resemble professional landlords. The third is neighbourhood impacts, including rising long-term rents, touristification, and pressures on local services and community cohesion (Cox and Haar, 2020). Taken together, these indicators provide a practical framework for assessing the degree to which Airbnb activity may undermine housing stability or contribute to wider forms of urban stress.
 
 ## 4.1 Broken Laws
-A range of behaviours can signal that short-term rental activity is operating outside regulatory boundaries, including tax non-compliance and financial irregularities (Bivens, 2019), but these cannot be identified from our data alone. This section therefore focuses on overstaying the 90-day limit because it is the only form of non-compliance that can be inferred directly from the dataset. Booking intensity is estimated by dividing number_of_reviews_ltm by the assumed review rate of 0.7, based on discussions in online host forums, such as AirHostsForum (2025), to create an estimated_bookings measure. An avg_stay_per_guest figure is then derived by dividing estimated_occupancy_l365d by this booking estimate. Listings whose estimated use suggests they are likely to exceed the permitted annual limit are treated as indicative of regulatory breach. While these results provide only a rough estimate and do not definitively confirm overstaying, the presence of listings flagged by this method suggests that non-compliance is occurring in at least some cases.
+A range of behaviours can signal that short-term rental activity is operating outside regulatory boundaries, including tax non-compliance and financial irregularities (Bivens, 2019), but these cannot be identified from our data alone. This section therefore focuses on overstaying the 90-day limit because it is the only form of non-compliance that can be inferred directly from the dataset. Booking intensity is estimated by dividing number_of_reviews_ltm by the assumed review rate of 0.7, based on discussions in online host forums, such as AirHostsForum (2015), to create an estimated_bookings measure. An avg_stay_per_guest figure is then derived by dividing estimated_occupancy_l365d by this booking estimate. Listings whose estimated use suggests they are likely to exceed the permitted annual limit are treated as indicative of regulatory breach. While these results provide only a rough estimate and do not definitively confirm overstaying, the presence of listings flagged by this method suggests that non-compliance is occurring in at least some cases.
 
 ```{python}
 # =========================================================================================
@@ -393,8 +393,30 @@ plt.show()
 
 ## 4.3 Impacts on Neighbourhoods
 
-A final way in which Airbnb may be considered “out of control” is through its neighbourhood impacts. Even when hosts comply with regulations, the cumulative presence of short-term rentals can reshape local housing and social conditions. Research in cities such as Barcelona, Lisbon and New York shows that high densities of Airbnb listings place upward pressure on long-term rents and reduce the availability of residential housing (Garcia-López et al., 2020). These effects typically emerge gradually rather than suddenly, but they contribute to a sense of housing insecurity among existing residents.
+A final way in which Airbnb may be considered “out of control” is through its neighbourhood impacts. Even when hosts comply with regulations, the cumulative presence of short-term rentals can reshape local housing and social conditions. Research in cities such as Barcelona like that of Garcia-López et al., (2020) show that the effects typically emerge gradually rather than suddenly, but they contribute to a sense of housing insecurity among existing residents.
 
-Beyond affordability, neighbourhoods with significant short-term rental activity report increased noise and nuisance complaints, reflecting the churn of transient visitors (Sheppard & Udell, 2018). Residents also note shifts in local services, as shops and amenities begin to cater more to tourists than to long-term communities (Cocola-Gant, 2016). Such changes alter the everyday character of an area even without widespread illegality or explicit commercialisation.
+Beyond affordability, neighbourhoods with significant short-term rental activity report increased noise and nuisance complaints, reflecting the churn of transient visitors (Sheppard & Udell, 2016). Residents also note shifts in local services, as shops and amenities begin to cater more to tourists than to long-term communities (Cocola-Gant, 2016). Such changes alter the everyday character of an area even without widespread illegality or explicit commercialisation.
 
 Taken together, these neighbourhood-level pressures align with broader patterns identified in the literature on urban change, where short-term rentals are understood to both reflect and accelerate gentrification dynamics. These perceived transformations are often central to claims that Airbnb activity feels “out of control” at the local level.
+
+# Bibliography
+AirHostsForum, 2015. How many of your guests leave reviews? [online] AirHostsForum. Available at: https://airhostsforum.com/t/how-many-of-your-guests-leave-reviews/2504
+ [Accessed 5 December 2025].
+
+Bivens, J., 2019. The economic costs and benefits of Airbnb: No reason for local policymakers to let Airbnb bypass tax or regulatory obligations. Washington, DC: Economic Policy Institute. Available at: https://www.epi.org/publication/the-economic-costs-and-benefits-of-airbnb-no-reason-for-local-policymakers-to-let-airbnb-bypass-tax-or-regulatory-obligations/
+ [Accessed 5 December 2025].
+
+Cócola Gant, A., 2016. Holiday rentals: the new gentrification battlefront. Sociological Research Online, 21(3), p.10. doi:10.5153/sro.4071.
+
+Cox, M. & Haar, K., 2020. Platform Failures: How short-term rental platforms like Airbnb fail cities and the need for strong regulations to protect housing. Brussels: Corporate Europe Observatory / GUE/NGL (European Parliament).
+
+Garcia-López, M.-À., Jofre-Monseny, J., Martínez-Mazza, R. & Segú, M., 2020. Do short-term rental platforms affect housing markets? Evidence from Airbnb in Barcelona. Journal of Urban Economics, 119, 103278. Available at: https://doi.org/10.1016/j.jue.2020.103278
+ [Accessed 5 December 2025].
+
+Kaplan, R.A. & Nadler, M.L., 2017. Airbnb: A case study in occupancy regulation and taxation. University of Chicago Law Review Online, Article 1038. Available at: https://chicagounbound.uchicago.edu/cgi/viewcontent.cgi?article=1038&context=uclrev_online
+ [Accessed 5 December 2025].
+
+Rozena, S. & Lees, L., 2021. The everyday lived experiences of Airbnbification in London. Social & Cultural Geography. Available at: https://www.tandfonline.com/doi/full/10.1080/14649365.2021.1939124
+ [Accessed 5 December 2025].
+
+Sheppard, S. & Udell, A., 2016. Do Airbnb properties affect house prices? Williams College Department of Economics.
