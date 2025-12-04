@@ -1,0 +1,242 @@
+---
+title: "Q1 Answer"
+jupyter: python3
+author: "Christian Mulder"
+affiliation: "University College London (UCL), MSc Urban Spatial Science"
+date: "November 2025"
+documentclass: article
+fontsize: 12pt
+linestretch: 1.5
+geometry: margin=1in
+mainfont: Times New Roman
+sansfont: Arial
+monofont: Courier New
+execute:
+  echo: false     # hide code
+  warning: false  # hide warnings
+  error: false    # hide errors
+header-includes:
+  - \usepackage{setspace}
+  - \usepackage{sectsty}
+  - \sectionfont{\normalsize}
+format:
+  pdf:
+    fig-width: 6.5
+    fig-height: 4.5
+    fig-pos: "H"
+    fig-align: center
+    keep-figures: true
+---
+
+First, let's load in the dataset to work with:
+```{python}
+import pandas as pd
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+# --- Define new file paths ---
+listings_path = Path("01_Data/Cleaned/listings.csv")
+boroughs_path = Path("statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp")
+msoas_path    = Path("statistical-gis-boundaries-london/ESRI/MSOA_2011_London_gen_MHW.shp")
+
+# --- Load tabular listings data ---
+df_l = pd.read_csv(listings_path)
+
+# --- Load London boundary shapefiles ---
+boroughs = gpd.read_file(boroughs_path)
+msoas = gpd.read_file(msoas_path)
+
+# --- Convert listings to GeoDataFrame ---
+gdf_l = gpd.GeoDataFrame(
+    df_l,
+    geometry=gpd.points_from_xy(df_l.longitude, df_l.latitude),
+    crs="EPSG:4326"  # WGS84
+).to_crs(epsg=27700)  # British National Grid
+
+# --- Identify professional hosts ---
+prof_hosts = df_l[
+    (df_l["host_listings_count"] >= 2) & 
+    (df_l["availability_365"] >= 180)
+]["host_id"].unique()
+
+df_prof_hosts = df_l[df_l["host_id"].isin(prof_hosts)]
+
+# --- Convert professional hosts to GeoDataFrame ---
+gdf_prof_hosts = gpd.GeoDataFrame(
+    df_prof_hosts,
+    geometry=gpd.points_from_xy(df_prof_hosts.longitude, df_prof_hosts.latitude),
+    crs="EPSG:4326"
+).to_crs(epsg=27700)
+
+# --- Map 1: All listings over borough + MSOA boundaries ---
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)
+msoas.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.5)
+gdf_l.plot(ax=ax, markersize=2, color="blue", alpha=0.6)
+ax.set_title("All Listings over Borough (red) and MSOA (black) Boundaries", fontsize=14)
+ax.axis("off")
+plt.show()
+
+# --- Map 2: Professional hosts
+fig, ax = plt.subplots(figsize=(12, 12))
+boroughs.plot(ax=ax, facecolor="none", edgecolor="red", linewidth=1)
+msoas.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=0.5)
+gdf_prof_hosts.plot(ax=ax, markersize=2, color="green", alpha=0.6)
+ax.set_title(
+    "Professional Hosts (>=2 listings AND availability >=180 days) over Borough (red) and MSOA (black) Boundaries",
+    fontsize=14
+)
+ax.axis("off")
+plt.show()
+
+print(f"The reduced dataset for professional landlords is {len(gdf_prof_hosts)}")
+```
+
+Now I need to start producing some basic visuals. First lets relook at the columns:
+```{python}
+df_l.columns.tolist()
+```
+
+Now let's recreate my code from before on rough estimate for overstaying: 
+```{python}
+# =========================================================================================
+# This estimate calculates the average length of stay per guest by dividing each 
+# listing’s total booked nights over the past year (estimated_occupancy_l365d) by 
+# an adjusted count of bookings, inferred from review volume (number_of_reviews_ltm / 0.7). 
+# =========================================================================================
+
+# Estimate number of bookings per listing (assuming 70% of guests leave reviews)
+df_l['estimated_bookings'] = df_l['number_of_reviews_ltm'] / 0.7
+
+# Estimate average length of stay per guest
+df_l['avg_stay_per_guest'] = df_l['estimated_occupancy_l365d'] / df_l['estimated_bookings']
+
+# Drop infinite or NaN values (e.g. listings with zero reviews or zero occupancy)
+df_l_cleaned = df_l[
+    df_l['avg_stay_per_guest'].notna() &
+    df_l['avg_stay_per_guest'].apply(lambda x: x != float('inf'))
+]
+
+# Compute overall average stay per guest
+overall_avg_stay_per_guest = df_l_cleaned['avg_stay_per_guest'].mean()
+print(f"Estimated average length of stay per guest over the past year: {overall_avg_stay_per_guest:.2f} nights")
+
+# Count listings with estimated average stay over 90 nights
+over_90_count = (df_l_cleaned['avg_stay_per_guest'] > 90).sum()
+print(f"Number of listings with estimated average stay over 90 nights: {over_90_count}")
+
+# Find the maximum estimated average stay
+max_stay = df_l_cleaned['avg_stay_per_guest'].max()
+print(f"Maximum estimated average stay recorded: {max_stay:.2f} nights")
+``` 
+
+Now that I've gotten the data and code back again, we need something to visualise it or else it is just numbers: 
+
+```{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set Seaborn style
+sns.set(style="whitegrid")
+
+# Create side-by-side subplots
+fig, (ax_linear, ax_log) = plt.subplots(1, 2, figsize=(20, 6))
+
+# -----------------------------
+# Linear scale histogram
+# -----------------------------
+sns.histplot(
+    df_l_cleaned['avg_stay_per_guest'],
+    bins=50,
+    color='skyblue',
+    edgecolor='black',
+    ax=ax_linear
+)
+ax_linear.axvline(90, color='red', linestyle='--', label='90-night threshold')
+ax_linear.set_xlabel('Estimated Average Stay per Guest (nights)')
+ax_linear.set_ylabel('Number of Listings')
+ax_linear.set_title('Linear Scale')
+ax_linear.legend()
+
+# -----------------------------
+# Log scale histogram
+# -----------------------------
+sns.histplot(
+    df_l_cleaned['avg_stay_per_guest'],
+    bins=50,
+    color='skyblue',
+    edgecolor='black',
+    ax=ax_log
+)
+ax_log.axvline(90, color='red', linestyle='--', label='90-night threshold')
+ax_log.set_yscale('log')
+ax_log.set_xlabel('Estimated Average Stay per Guest (nights)')
+ax_log.set_ylabel('Number of Listings (log scale)')
+ax_log.set_title('Log Scale')
+ax_log.legend()
+
+plt.suptitle('Distribution of Estimated Average Stay per Guest (Last 12 Months)', fontsize=16)
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.show()
+```
+
+Now to map it and count it per borough...
+
+```{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+import geopandas as gpd
+
+# -----------------------------
+# Aggregate counts per borough
+# -----------------------------
+illegal_counts = gdf_l_cleaned[gdf_l_cleaned['likely_illegal']].groupby('borough_name').size().reset_index(name='overstay_count')
+
+# Keep only boroughs with >0 overstaying listings
+illegal_counts_nonzero = illegal_counts[illegal_counts['overstay_count'] > 0]
+
+# -----------------------------
+# Create side-by-side plot
+# -----------------------------
+fig, (ax_map, ax_hist) = plt.subplots(1, 2, figsize=(20, 12), gridspec_kw={'width_ratios': [2, 1]})
+
+# --- Map on the left ---
+# Plot MSOAs lightly
+msoas.plot(ax=ax_map, facecolor='none', edgecolor='black', linewidth=0.1)
+
+# Borough outlines
+boroughs.plot(ax=ax_map, facecolor='none', edgecolor='black', linewidth=1)
+
+# Overstaying listings as red dots
+gdf_l_cleaned[gdf_l_cleaned['likely_illegal']].plot(
+    ax=ax_map,
+    markersize=20,
+    color='red',
+    alpha=0.7,
+    label='Likely Overstaying'
+)
+
+ax_map.set_title("Likely Overstaying Airbnb Listings in London", fontsize=16)
+ax_map.axis('off')
+ax_map.legend()
+
+# --- Histogram on the right ---
+sns.barplot(
+    y='borough_name',
+    x='overstay_count',
+    data=illegal_counts_nonzero.sort_values('overstay_count', ascending=True),
+    color='red',    # fixed single color
+    ax=ax_hist      # explicitly use the right-hand axis
+)
+
+ax_hist.set_xlabel("Number of Overstaying Listings")
+ax_hist.set_ylabel("")
+ax_hist.set_title("Count of Likely Overstaying Listings per Borough (non-zero)", fontsize=16)
+
+plt.tight_layout()
+plt.show()
+```
+
+
+What I will add 
