@@ -1,0 +1,1600 @@
+---
+jupyter: python3
+
+# Document settings
+documentclass: article
+fontsize: 12pt
+linestretch: 1.5
+geometry: margin=1in
+
+mainfont: Times New Roman
+sansfont: Arial
+monofont: Courier New
+
+# References - .csl and .bib adopted from Jon's repo
+bibliography: https://raw.githubusercontent.com/zhengpei-xu/CASA0013_Groupwork/main/Readings.bib
+csl: https://raw.githubusercontent.com/zhengpei-xu/CASA0013_Groupwork/main/harvard-cite-them-right.csl
+
+# Code execution
+execute:
+  echo: false
+  warning: false
+  error: false
+
+format:
+  pdf:
+    titlepage: false     # Stops Quarto template title page
+    fig-width: 5
+    fig-height: 3.5
+    fig-pos: "H"
+    fig-align: center
+    keep-figures: true
+
+header-includes:
+  # Packages
+  - \usepackage{setspace}
+  - \usepackage{sectsty}
+  - \usepackage{xcolor}
+  - \usepackage{titlesec}
+  - \usepackage{tikz}
+  - \usetikzlibrary{calc}
+  - \usepackage{fancyhdr}
+
+  # Airbnb colour palette
+  - \definecolor{airbnbred}{HTML}{FF5A5F}
+  - \definecolor{airbnbdark}{HTML}{C81E2E}
+  - \definecolor{airbnblight}{HTML}{FFD2D4}
+
+  # Define safe macro for red section bars
+  - |
+      \newcommand{\sectionbar}[1]{%
+        \colorbox{airbnbred}{%
+          \parbox{\dimexpr\textwidth-2\fboxsep}{\textcolor{white}{#1}}%
+        }%
+      }
+
+  # Section formatting: forces a NEW PAGE before each section
+  - |
+      \titleformat{\section}
+        {\normalfont\Large\bfseries}
+        {}
+        {0pt}
+        {\clearpage\sectionbar}
+
+  # Spacing under section bar
+  - \titlespacing*{\section}{0pt}{2em}{1.2em}
+
+  # Subsection styling
+  - \subsectionfont{\color{airbnbdark}}
+
+  # Page header/footer
+  - |
+      \pagestyle{fancy}
+      \fancyhead[L]{\color{airbnbdark}\textbf{Airbnb London Report}}
+      \fancyhead[R]{\color{airbnbred}\thepage}
+      \fancyfoot{}
+      \renewcommand{\headrulewidth}{0.4pt}
+      \renewcommand{\headrule}{\color{airbnbred}\hrule height 0.4pt}
+---
+```{python}
+# ===========================================
+# Loading in all packages
+# ===========================================
+
+# Core
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+# Spatial
+import geopandas as gpd
+
+# Plotting
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+from matplotlib.colors import (
+    LinearSegmentedColormap,
+    ListedColormap,
+    Normalize
+)
+from matplotlib.ticker import PercentFormatter
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import matplotlib.image as mpimg
+import matplotlib.patches as mpatches
+
+# IO / utilities
+import requests
+import gzip
+import shutil
+import zipfile
+from io import BytesIO
+
+# Notebook display
+from IPython.display import Markdown, display
+```
+
+```{python}
+# ===========================================
+# Setting up Colour Dict for Later Use
+# ===========================================
+
+COLORS = {
+    "airbnb": {
+        "red": {
+            "dark": "#C81E2E",
+            "main": "#FF5A5F",
+            "light": "#FFD2D4",
+        }
+    },
+    "sequential": {
+        "blue": [
+            "#D6EFFC",   # very light → LOW
+            "#ADDDF7",
+            "#86C3E9",
+            "#62A9DA",
+            "#3E8FCB",
+            "#1B75BC",   # dark → HIGH
+        ],
+        "red": [
+            "#FF9A9E",
+            "#FF5A5F",
+            "#D63238",
+            "#9E1A1F",
+        ],
+    },
+    "diverging": [
+        "#1B75BC",
+        "#80C6E8",
+        "#bfe1f1ff",
+        "#FFFFFF",
+        "#FFD2D4",
+        "#FF5A5F",
+    ],
+}
+```
+
+```{python}
+
+# macOS fix for SSL certificate errors:
+# Run /Applications/Python\ 3.x/Install\ Certificates.command
+# (only needed for Python installed from python.org)
+
+# ===========================================
+# Download, Unzip, Convert, Clean
+# ===========================================
+
+# Base folder (safe)
+base = Path(".")
+
+# Directories
+raw_dir   = base / "01_Data" / "Raw"
+clean_dir = base / "01_Data" / "Cleaned"
+
+raw_dir.mkdir(parents=True, exist_ok=True)
+clean_dir.mkdir(parents=True, exist_ok=True)
+
+# URLs and paths
+url = "https://orca.casa.ucl.ac.uk/~jreades/data/20250615-London-listings.csv.gz"
+
+raw_gz      = raw_dir / "20250615-London-listings.csv.gz"
+raw_csv     = raw_dir / "20250615-London-listings.csv"
+raw_parquet = raw_dir / "20250615-London-listings.parquet"
+
+clean_parquet = clean_dir / "listings.parquet"
+clean_csv     = clean_dir / "listings.csv"
+
+
+# FAST EXIT: If cleaned exists
+if clean_parquet.exists():
+    df_cleaned = pd.read_parquet(clean_parquet)
+
+else:
+
+    # Step 1 — Download raw .gz once
+    if not raw_gz.exists():
+        r = requests.get(url)
+        r.raise_for_status()
+        raw_gz.write_bytes(r.content)
+
+    # Step 2 — Extract CSV (.gz → .csv) ONCE
+    if not raw_csv.exists():
+        with gzip.open(raw_gz, "rb") as f_in, open(raw_csv, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+    # Step 3 — Convert raw CSV → Parquet 
+    if not raw_parquet.exists():
+        df_raw = pd.read_csv(raw_csv)
+        df_raw.to_parquet(raw_parquet)
+        del df_raw
+
+    # Load raw parquet 
+    df = pd.read_parquet(raw_parquet)
+
+    # Reduce columns
+    cols = ['id','listing_url','last_scraped','name','description','host_id','host_name',
+        'host_since','host_location','host_about','host_is_superhost','host_listings_count',
+        'host_total_listings_count','host_verifications','latitude','longitude','property_type',
+        'room_type','accommodates','bathrooms','bathrooms_text','bedrooms','beds','amenities',
+        'price','minimum_nights','maximum_nights','availability_365','number_of_reviews',
+        'first_review','last_review','review_scores_rating','reviews_per_month',
+        'estimated_occupancy_l365d','estimated_revenue_l365d','number_of_reviews_ltm']
+    df = df[cols]
+
+    # Null cleanup
+    df.drop(columns=['host_about'], inplace=True)
+
+    probs = df.isnull().sum(axis=1)
+    df = df.loc[probs <= 5]
+
+    # Fix data types
+    df['host_is_superhost'] = df['host_is_superhost'].replace({'f':False,'t':True}).astype(bool)
+
+    for d in ['last_scraped','host_since','first_review','last_review']:
+        df[d] = pd.to_datetime(df[d])
+
+    df['property_type'] = df['property_type'].astype('category')
+    df['room_type'] = df['room_type'].astype('category')
+
+    df['price'] = (
+        df['price'].astype(str)
+                    .str.replace("$", "", regex=False)
+                    .str.replace(",", "", regex=False)
+    )
+
+    df['price'] = pd.to_numeric(df['price'], errors="coerce")
+
+    ints = ['id','host_id','host_listings_count','host_total_listings_count','accommodates',
+            'beds','minimum_nights','maximum_nights','availability_365']
+    for col in ints:
+        try:
+            df[col] = df[col].astype("float").astype("int")
+        except:
+            df[col] = df[col].astype("float").astype(pd.UInt16Dtype())
+
+    df.reset_index(drop=True, inplace=True)
+
+    # Save cleaned 
+    df.to_parquet(clean_parquet, index=False)
+    df.to_csv(clean_csv, index=False)
+
+    df_cleaned = pd.read_parquet(clean_parquet)
+```
+
+```{python}
+
+# ===========================================
+# Load Clean Parquet & Spatial Data
+# ===========================================
+
+# Spatial data paths
+listings_path = Path("01_Data/Cleaned/listings.parquet")
+
+base_dir = Path("statistical-gis-boundaries-london")
+esri_dir = base_dir / "ESRI"
+zip_path = Path("ESRI.zip")
+
+boroughs_path = esri_dir / "London_Borough_Excluding_MHW.shp"
+msoas_path    = esri_dir / "MSOA_2011_London_gen_MHW.shp"
+
+# Load cleaned listings
+df_l = pd.read_parquet(listings_path)
+
+# Download & extract ESRI shapefiles if missing
+if not esri_dir.exists():
+
+    url = (
+        "https://github.com/zhengpei-xu/"
+        "CASA0013_Groupwork/raw/main/ESRI.zip"
+    )
+
+    r = requests.get(url)
+    r.raise_for_status()
+    zip_path.write_bytes(r.content)
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "r") as z:
+        z.extractall(base_dir)
+
+    zip_path.unlink()  # clean up zip file
+
+# Load shapefiles
+boroughs = gpd.read_file(boroughs_path)
+msoas    = gpd.read_file(msoas_path)
+
+# Convert shapefiles to EPSG:27700 (British National Grid)
+boroughs = boroughs.to_crs(epsg=27700)
+msoas = msoas.to_crs(epsg=27700)
+
+# Listings → GeoDataFrame in BNG
+gdf_l = gpd.GeoDataFrame(
+    df_l,
+    geometry=gpd.points_from_xy(df_l.longitude, df_l.latitude),
+    crs="EPSG:4326"
+).to_crs(epsg=27700)
+
+# Identify professional hosts
+host_summary = (
+    df_l
+    .assign(high_avail=df_l["availability_365"] >= 180)
+    .groupby("host_id")
+    .agg(
+        n_listings=("id", "size"),
+        n_high_avail=("high_avail", "sum")
+    )
+)
+
+prof_hosts = host_summary.loc[
+    (host_summary["n_listings"] >= 2) &
+    (host_summary["n_high_avail"] >= 2)
+].index.values
+
+df_prof_hosts = df_l[df_l["host_id"].isin(prof_hosts)]
+
+# Convert professional hosts to GeoDataFrame
+gdf_prof_hosts = gpd.GeoDataFrame(
+    df_prof_hosts,
+    geometry=gpd.points_from_xy(df_prof_hosts.longitude, df_prof_hosts.latitude),
+    crs="EPSG:4326"
+).to_crs(epsg=27700)
+``` 
+
+```{python}
+# ===========================================
+# Generate map for title page 
+# ===========================================
+
+fig, ax = plt.subplots(figsize=(10, 10))
+
+# Thick borough outlines
+boroughs.plot(
+    ax=ax,
+    facecolor="none",
+    edgecolor="white",
+    linewidth=2.5
+)
+
+# Thin MSOA outlines
+msoas.plot(
+    ax=ax,
+    facecolor="none",
+    edgecolor="white",
+    linewidth=0.25
+)
+
+ax.set_axis_off()
+
+# Save transparent PNG for title page overlay
+plt.savefig(
+    "title_map.png",
+    dpi=320,
+    transparent=True,
+    bbox_inches="tight",
+    pad_inches=0
+)
+
+plt.close()
+```
+
+\begin{titlepage}
+\thispagestyle{empty}
+
+% ------------------------------------------
+% BACKGROUND: white top (40%), red bottom (60%)
+% ------------------------------------------
+\begin{tikzpicture}[remember picture,overlay]
+
+    % Red lower band (bottom 60%)
+    \fill[airbnbred]
+        (current page.south west)
+        rectangle
+        ([yshift=-0.40\paperheight]current page.north east);
+
+    % Thin red bar at the very top
+    \fill[airbnbred]
+        ([yshift=-10pt]current page.north west)
+        rectangle
+        ([yshift=-22pt]current page.north east);
+
+\end{tikzpicture}
+
+% ------------------------------------------
+% MAP overlay inside red section
+% ------------------------------------------
+\begin{tikzpicture}[remember picture,overlay]
+    \node[opacity=0.35] at
+        ($(current page.south)!0.5!([yshift=-0.40\paperheight]current page.north)$)
+        {\includegraphics[width=1.05\paperwidth]{title_map.png}};
+\end{tikzpicture}
+
+% ------------------------------------------
+% CENTERED TITLE, SUBTITLE, AND NAMES IN WHITE AREA
+% ------------------------------------------
+\begin{tikzpicture}[remember picture,overlay]
+
+    % Midpoint of the white zone (top 40% → midpoint = 20% down page)
+    \node[anchor=center] at 
+        ([yshift={-0.20\paperheight}]current page.north)
+        {
+            \begin{minipage}{0.9\textwidth}
+                \begin{center}
+
+                % LARGE RED TITLE
+                {\fontsize{48pt}{52pt}\selectfont\sffamily\bfseries\color{airbnbdark}
+                Airbnb in London\\[0.40cm]}
+
+                % SUBTEXT
+                {\large\sffamily\bfseries\color{black!55}
+                Foundations of Spatial Data Science\\[0.35cm]}
+
+                % NAMES 
+                {\large\sffamily\bfseries\color{black!55}
+                C. Mulder \quad B. Werneck \quad Z. Xu \quad H. M. Chan}
+
+                % WORD COUNT 
+                {\normalsize\sffamily\color{black!55}
+                Word count: 2484}
+
+                \end{center}
+            \end{minipage}
+        };
+
+\end{tikzpicture}
+
+\end{titlepage}
+
+```{python}
+
+def add_north_arrow(ax, location=(0.08, 0.16), zoom=0.08):
+    """
+    Add a compass-style north arrow image to a Matplotlib Axes.
+
+    The image is loaded from the project GitHub repository and already
+    includes the letter 'N'.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes to draw the north arrow on.
+    location : tuple of float
+        (x, y) location in axes fraction coordinates.
+    zoom : float
+        Image scaling factor.
+    """
+
+    # Raw GitHub URL for north arrow image
+    image_url = (
+        "https://raw.githubusercontent.com/zhengpei-xu/"
+        "CASA0013_Groupwork/main/"
+        "0-5523_north-arrow-orienteering-clip-art-at-clker-north.png"
+    )
+
+    # Load image from URL
+    response = requests.get(image_url)
+    response.raise_for_status()  # fail clearly if URL breaks
+
+    img = mpimg.imread(BytesIO(response.content))
+
+    imagebox = OffsetImage(img, zoom=zoom)
+
+    ab = AnnotationBbox(
+        imagebox,
+        location,
+        xycoords="axes fraction",
+        frameon=False,
+        zorder=12
+    )
+
+    ax.add_artist(ab)
+
+def add_scale_bar_5km(
+    ax,
+    location=(0.06, 0.06),
+    height_frac=0.012,
+    linewidth=1.2,
+    text_size=12
+):
+    """
+    Add a fixed 5 km cartographic scale bar (5 × 1 km segments).
+    Assumes projected CRS with metres.
+    """
+
+    TOTAL_LENGTH = 5000      # metres
+    N_SEGMENTS = 5
+    SEGMENT_LENGTH = TOTAL_LENGTH / N_SEGMENTS
+
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+
+    bar_height = (ylim[1] - ylim[0]) * height_frac
+
+    x_start = xlim[0] + (xlim[1] - xlim[0]) * location[0]
+    y_start = ylim[0] + (ylim[1] - ylim[0]) * location[1]
+
+    # Draw alternating segments
+    for i in range(N_SEGMENTS):
+        ax.add_patch(
+            mpatches.Rectangle(
+                (
+                    x_start + i * SEGMENT_LENGTH,
+                    y_start
+                ),
+                SEGMENT_LENGTH,
+                bar_height,
+                facecolor="black" if i % 2 == 0 else "white",
+                edgecolor="black",
+                linewidth=linewidth,
+                zorder=10
+            )
+        )
+
+    # Outline entire bar
+    ax.add_patch(
+        mpatches.Rectangle(
+            (x_start, y_start),
+            TOTAL_LENGTH,
+            bar_height,
+            fill=False,
+            edgecolor="black",
+            linewidth=linewidth,
+            zorder=11
+        )
+    )
+
+    # Label
+    ax.text(
+        x_start + TOTAL_LENGTH / 2,
+        y_start + bar_height * 1.8,
+        "5 km",
+        ha="center",
+        va="bottom",
+        fontsize=text_size,
+        zorder=12
+    )
+```
+
+# 1. Introduction
+## 1.1. Context & Purpose
+Recent reporting suggests that short-term rentals in London, particularly Airbnb, are placing additional pressure on housing supply, neighbourhood stability, and local services. In response to opposition proposals targeting professional hosts, this analysis uses data to clarify the scale of the issue and the likely effects of such intervention.
+
+## 1.2. Data Basis & Assumptions
+The analysis uses the Inside Airbnb listings dataset (June 2025) and official London boundary data from @GLA2025StatisticalBoundaries. Listings with missing key attributes or incomplete location data were removed to ensure comparability. Because Airbnb data is self-reported and lacks full occupancy or tenancy details, results are indicative rather than definitive. Confidence would be improved by additional administrative data on registration, property use, and enforcement, which is not publicly available.
+
+# 2. Is Airbnb "out of control"?
+Assessing whether Airbnb is “out of control” requires looking beyond total listing numbers. Research highlights three key indicators: breaches of rules; commercialisation through multi-listing hosts operating like hotels; and neighbourhood impacts on rents, touristification, and local services [@CoxHaar2020]. Together, these offer a practical framework for judging whether Airbnb creates systemic problems for London or more localised concerns.
+
+## 2.1. Broken Laws
+Direct evidence of illegal short-term rental activity is limited, but patterns consistent with breaches of London’s 90-day limit can be identified in the data [@RozenaLees2021]. Because Airbnb does not publish occupancy data, bookings are estimated using the common assumption that about 70% of guests leave reviews [@AirHostsForum2015], combined with Airbnb’s occupancy measure to approximate annual use. Listings exceeding 90 nights are treated as likely overstaying.
+
+```{python}
+#====================================================================
+# Estimate average stay per guest and identify potential overstaying
+#====================================================================
+
+# Estimate number of bookings per listing (assuming 70% of guests leave reviews)
+df_l["estimated_bookings"] = df_l["number_of_reviews_ltm"] / 0.7
+
+# Estimate average length of stay per guest
+df_l["avg_stay_per_guest"] = (
+    df_l["estimated_occupancy_l365d"] / df_l["estimated_bookings"]
+)
+
+# Drop invalid values (NaN or infinite)
+df_l_cleaned = df_l[
+    df_l["avg_stay_per_guest"].replace([np.inf, -np.inf], np.nan).notna()
+]
+
+# Compute summary statistics for inline text
+overall_avg_stay_per_guest = df_l_cleaned["avg_stay_per_guest"].mean()
+over_90_count = (df_l_cleaned["avg_stay_per_guest"] > 90).sum()
+max_stay = df_l_cleaned["avg_stay_per_guest"].max()
+```
+
+```{python}
+#=========================================================
+# Identify likely overstaying listings and map them
+#=========================================================
+
+# Subset existing GeoDataFrame and attach analytical column
+gdf_l_cleaned = gdf_l.loc[df_l_cleaned.index].copy()
+gdf_l_cleaned["avg_stay_per_guest"] = df_l_cleaned["avg_stay_per_guest"]
+
+# Attach borough name
+gdf_l_cleaned = gpd.sjoin(
+    gdf_l_cleaned,
+    boroughs[["NAME", "geometry"]],
+    how="left",
+    predicate="within"
+).rename(columns={"NAME": "borough_name"}).drop(columns=["index_right"], errors="ignore")
+
+# Flag likely overstaying listings
+gdf_l_cleaned["likely_illegal"] = gdf_l_cleaned["avg_stay_per_guest"] > 90
+
+# PLOT
+fig, ax = plt.subplots(figsize=(12, 12))
+
+# Background fill
+boroughs.plot(ax=ax, facecolor="#f2f2f2", edgecolor="none", zorder=1)
+
+# MSOA outlines
+msoas.plot(ax=ax, facecolor="none", edgecolor="#cacacaff", linewidth=0.1, zorder=2)
+
+# Borough outlines
+boroughs.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=1.4, zorder=3)
+
+# Overstaying listings
+gdf_l_cleaned[gdf_l_cleaned["likely_illegal"]].plot(
+    ax=ax,
+    markersize=40,
+    color=COLORS["airbnb"]["red"]["main"],
+    label="Likely Overstaying",
+    zorder=5
+)
+
+add_north_arrow(ax, location=(0.07, 0.18), zoom=0.05)
+add_scale_bar_5km(ax, location=(0.035, 0.06))
+
+ax.set_title("Likely Overstaying Airbnb Listings in London", fontsize=16)
+ax.axis("off")
+ax.legend(fontsize=15, title_fontsize=15)
+
+plt.tight_layout()
+plt.show()
+``` 
+
+```{python}
+
+display(Markdown(f"""
+This approach is indicative rather than definitive, but consistent with broader concerns about short-term rental (STR) non-compliance [@Bivens2019]. The results identify only {over_90_count} likely overstaying listings, concentrated in high-demand central boroughs such as Westminster, Kensington & Chelsea, and Tower Hamlets. With an average stay of {overall_avg_stay_per_guest:.1f} nights per guest, most listings fall well below breach thresholds. Overall, overstaying exists but is limited and geographically concentrated, not systemic across London.
+"""))
+```
+
+## 2.2 Commercialisation and Multi-Listing Hosts
+
+```{python}
+
+# Compute multi-host statistics 
+total_hosts = df_l["host_id"].nunique()
+
+# Base condition: multi-listing hosts
+multi_hosts = df_l[df_l["host_listings_count"] > 1]
+
+multi_host_count = multi_hosts["host_id"].nunique()
+multi_host_pct = (multi_host_count / total_hosts) * 100
+
+# Higher-intensity operators
+multi_10plus = multi_hosts[multi_hosts["host_listings_count"] >= 10]["host_id"].nunique()
+multi_20plus = multi_hosts[multi_hosts["host_listings_count"] >= 20]["host_id"].nunique()
+
+
+display(Markdown(f"""
+Multi-listing is a common indicator of commercialisation in STR. If Airbnb in London were truly “out of control,” many hosts would operate at near-hotel scale. Instead, the data show that {multi_host_count:,} hosts operate more than one listing, representing {multi_host_pct:.1f}% of all hosts. However, {multi_10plus:,} hosts have ten or more listings, and only {multi_20plus:,} manage twenty or more, indicating that commercial-scale activity is limited to a small minority.
+"""))
+``` 
+
+One further behaviour that may contribute to the perception of Airbnb being “out of control” is when hosts operate several properties at the same location, effectively running small hotels without the obligations associated with them. To identify these cases, we group listings by host ID and rounded 10-metre coordinates to approximate shared addresses.
+
+
+```{python}
+#=========================================================
+# Identify multi-listing clusters at ~same address
+#=========================================================
+
+# Work on a copy to avoid mutating base GeoDataFrame
+gdf_cluster_base = gdf_l.copy()
+
+# Round coordinates to nearest 10 metres
+gdf_cluster_base["x_round"] = (gdf_cluster_base.geometry.x / 10).round() * 10
+gdf_cluster_base["y_round"] = (gdf_cluster_base.geometry.y / 10).round() * 10
+
+# Create cluster identifier: same host, same approx address
+gdf_cluster_base["cluster_id"] = (
+    gdf_cluster_base["host_id"].astype(str)
+    + "_"
+    + gdf_cluster_base["x_round"].astype(str)
+    + "_"
+    + gdf_cluster_base["y_round"].astype(str)
+)
+
+# Count listings per cluster
+cluster_counts = (
+    gdf_cluster_base
+    .groupby("cluster_id")
+    .size()
+    .reset_index(name="count")
+)
+
+# Keep only clusters of 2+ listings
+gdf_clusters = (
+    gdf_cluster_base
+    .merge(cluster_counts, on="cluster_id")
+    .loc[lambda d: d["count"] >= 2]
+)
+``` 
+```{python}
+
+# Categorise cluster size for mapping
+def cluster_category(n):
+    if n == 2:
+        return "2 listings"
+    elif n == 3:
+        return "3 listings"
+    elif n == 4:
+        return "4 listings"
+    else:
+        return "5+ listings"
+
+gdf_clusters["cluster_cat"] = gdf_clusters["count"].apply(cluster_category)
+
+# Derive colours from sequential red scale
+cluster_labels = ["2 listings", "3 listings", "4 listings", "5+ listings"]
+cluster_colors = COLORS["sequential"]["red"]
+colour_map = dict(zip(cluster_labels, cluster_colors))
+
+
+# PLOT
+fig, ax = plt.subplots(figsize=(12, 12))
+
+# Background fill
+boroughs.plot(ax=ax, facecolor="#f1f1f1ff", edgecolor="none")
+
+# MSOA outlines
+msoas.plot(ax=ax, facecolor="none", edgecolor="#cacacaff", linewidth=0.1)
+
+# Borough outlines
+boroughs.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=1.2)
+
+# Cluster points
+for cat, colour in colour_map.items():
+    gdf_clusters[gdf_clusters["cluster_cat"] == cat].plot(
+        ax=ax,
+        color=colour,
+        markersize=25,
+        alpha=0.9,
+        label=cat,
+        zorder=5
+    )
+
+ax.set_title(
+    "Multi-Listing Clusters by Scale (2, 3, 4, 5+ per Address)",
+    fontsize=16
+)
+ax.axis("off")
+
+ax.legend(
+    title="Cluster Size",
+    fontsize=15,
+    title_fontsize=15,
+    loc="lower right",
+    frameon=True
+)
+
+add_north_arrow(ax, location=(0.07, 0.18), zoom=0.05)
+add_scale_bar_5km(ax, location=(0.035, 0.06))
+
+plt.tight_layout()
+plt.show()
+``` 
+
+```{python}
+# Summary counts of multi-listings for markdown
+n2 = (gdf_clusters["count"] >= 2).sum()
+n3 = (gdf_clusters["count"] >= 3).sum()
+n5 = (gdf_clusters["count"] >= 5).sum()
+
+display(Markdown(f"""
+Across London, there are {n2:,} locations where a single host operates two or more listings at the same approximate address, {n3:,} locations with three or more, and {n5:,} with at least five. These represent the small “hotel-like” nodes of activity within the platform.
+
+The map shows that these clusters are geographically concentrated, primarily in central boroughs with high tourist demand. They are created by a small minority of hosts, but do form localised hotspots of commercial activity that may contribute to neighbourhood pressure or perceived unfairness relative to regulated accommodation providers.
+"""))
+```
+
+## 2.3. Impact on Neighbourhoods
+Airbnb may appear “out of control” as a result of its neighbourhood effects. Even when compliant, a high density of short-term rentals can gradually reshape local housing markets and daily life, increasing insecurity for long-term residents [@GarciaLopez2020Airbnb]. Areas with frequent visitor turnover often report noise, nuisance, pressure on services, and a shift toward tourist-oriented businesses, altering neighbourhood character [@SheppardUdell2016; @CocolaGant2016].
+
+Although our data do not capture noise or rents directly, the spatial concentrations identified earlier (especially in Westminster, Kensington and Chelsea, and Tower Hamlets) align with where the literature predicts these impacts to be strongest. This suggests neighbourhood effects are localised rather than citywide.
+
+
+## 2.4. Overall Assessment
+Taken together, the evidence shows that Airbnb activity in London is not out of control at the city-wide level. Rule-breaking and commercial-scale hosting occur, but they are concentrated among a small minority of operators and in a limited number of high-demand neighbourhoods. The main pressures are therefore localised, suggesting that targeted regulatory intervention would be more proportionate and effective than blanket restrictions.
+
+# 3. Professional Landlords and the Scale of Affected Properties
+
+## 3.1. Defining “Professional Landlords”
+To define “professional landlords,” this analysis follows micro-entrepreneurship literature, which distinguishes commercial operators by both scale and intent [@Gyodi2023]. Scale is measured by the number of properties a host manages, with those holding two or more listings classified as professional, since operating multiple properties exceeds the supplementary, primary-residence income model often cited in defence of Airbnb’s tax position [@Bivens2019]. Intent is captured through availability, as a measure of commercial intensity. While the most commercial operators are often defined as listing properties for 240 or more days per year [@Barron2018], such a high threshold excludes hosts who engage in sustained near year-round activity. Moreover, entire-home short-term rentals are legally permitted for up to 90 booked days annually in London. As booked days are not directly observable, this analysis adopts 180 available days (approximately twice the regulatory limit) as a proxy for sustained commercial operation.
+
+## 3.2. Quantifying Professional Landlords
+
+```{python}
+#=========================================================
+# Professional landlords: summary statistics
+#=========================================================
+
+# Host counts
+num_prof_hosts = len(prof_hosts)
+num_regular_hosts = df_l["host_id"].nunique() - num_prof_hosts
+
+# Listing counts
+num_prof_listings = len(df_prof_hosts)
+num_regular_listings = len(df_l) - num_prof_listings
+
+# Percentage of hosts that are professional
+pct_prof_hosts = num_prof_hosts / df_l["host_id"].nunique() * 100
+
+display(Markdown(f"""
+Applying the definition above, London has {num_prof_hosts:,} professional landlords, 
+representing {pct_prof_hosts:.1f}% of all hosts. On its own this suggests that commercial 
+operators are a minority, but this picture changes once we consider how many properties 
+they control. The charts below compare the share of professional hosts to the share of 
+listings associated with them.
+"""))
+```
+
+```{python, fig.height = 8, fig.width = 8}
+#=========================================================
+# Professional vs regular hosts: donut charts
+#=========================================================
+
+# Percentage of listings from professional hosts
+pct_prof_listings = num_prof_listings / len(df_l) * 100
+pct_reg_listings = 100 - pct_prof_listings
+
+labels_hosts = [
+    f"Professional — {pct_prof_hosts:.1f}%",
+    f"Regular — {100 - pct_prof_hosts:.1f}%"
+]
+
+labels_listings = [
+    f"Professional — {pct_prof_listings:.1f}%",
+    f"Regular — {pct_reg_listings:.1f}%"
+]
+
+# Styled donut charts
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+# Donut 1: Host-level 
+ax1.pie(
+    [num_prof_hosts, num_regular_hosts],
+    labels=labels_hosts,
+    colors=[
+        COLORS["airbnb"]["red"]["main"],
+        COLORS["airbnb"]["red"]["light"]
+    ],
+    wedgeprops={"width": 0.35},
+    startangle=90,
+    textprops={"fontsize": 11}
+)
+ax1.set_title("Share of Hosts That Are Professional", fontsize=12)
+
+# Donut 2: Listing-level 
+ax2.pie(
+    [num_prof_listings, num_regular_listings],
+    labels=labels_listings,
+    colors=[
+        COLORS["airbnb"]["red"]["main"],
+        COLORS["airbnb"]["red"]["light"]
+    ],
+    wedgeprops={"width": 0.35},
+    startangle=90,
+    textprops={"fontsize": 11}
+)
+ax2.set_title("Share of Listings From Professional Hosts", fontsize=12)
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+# Listings per professional host
+listings_per_prof_host = (
+    df_prof_hosts
+    .groupby("host_id")
+    .size()
+)
+
+display(Markdown(f"""
+The comparison shows a clear asymmetry. While professional landlords account for just 
+{pct_prof_hosts:.1f}% of hosts, they control {pct_prof_listings:.1f}% of all listings in 
+London. This indicates that commercial operators play a disproportionately large role in 
+shaping Airbnb’s presence in the city, despite being a relatively small segment of platform 
+participants.
+
+However, these high-level proportions do not reveal how large individual operators actually 
+are. The label “professional landlord” can include both small-scale hosts managing only two 
+properties and large-scale operators with multiple units spread across the city. To 
+understand this variation, we examined the distribution of listings among professional hosts.
+"""))
+
+```
+
+```{python, fig.height = 7, fig.width = 8}
+#=========================================================
+# Build listing-level data from existing objects
+#=========================================================
+host_scale = (
+    df_l[df_l["host_id"].isin(prof_hosts)]   # ← use prof_hosts properly
+    .groupby("host_id")
+    .size()
+    .reset_index(name="listings_count")
+)
+
+# Keep professional scale only (2+ listings)
+host_scale = host_scale[host_scale["listings_count"] >= 2]
+
+# Bins
+bins = [2, 4, 10, 20, 50, 100, float("inf")]
+labels = ["2–3", "4–10", "11–20", "21–50", "51–100", "100+"]
+
+host_scale["scale_category"] = pd.cut(
+    host_scale["listings_count"],
+    bins=bins,
+    labels=labels,
+    right=False
+)
+
+scale_counts = (
+    host_scale["scale_category"]
+    .value_counts()
+    .sort_index()
+)
+
+# PLOT
+fig, ax = plt.subplots(figsize=(12, 7))
+
+bar_color = COLORS["airbnb"]["red"]["main"] 
+
+ax.set_axisbelow(True)
+
+bars = ax.bar(
+    scale_counts.index,
+    scale_counts.values,
+    color=bar_color,
+    edgecolor="black",
+    linewidth=0.8,
+    zorder=3
+)
+
+ax.set_xlabel("Number of Listings per Host", fontsize=13)
+ax.set_ylabel("Number of Hosts", fontsize=13)
+ax.set_title(
+    "Professional Landlords by Scale",
+    fontsize=16,
+    fontweight="bold",
+    pad=20
+)
+
+ax.grid(axis="y", alpha=0.3)
+
+# Labels
+total_prof_hosts = scale_counts.sum()
+
+for bar, count in zip(bars, scale_counts.values):
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        bar.get_height() + total_prof_hosts * 0.015,
+        f"{count:,}\n({count / total_prof_hosts * 100:.1f}%)",
+        ha="center",
+        va="bottom",
+        fontsize=10
+    )
+
+ax.set_ylim(0, scale_counts.max() * 1.18)
+
+plt.tight_layout()
+plt.show()
+``` 
+```{python}
+# Percentage of professional hosts in the 2–3 bin
+pct_2_3_listings = (scale_counts.loc["2–3"] / scale_counts.sum()) * 100
+
+
+display(Markdown(f"""
+The distribution shows that {pct_2_3_listings:.1f}% of professional hosts manage only 2–3 
+listings, indicating that a significant share of professional operators remain relatively 
+small in scale. At the same time, the long right tail (hosts with 10, 20, or even 50 or more 
+listings) reveals a smaller but significant group of high-intensity operators whose activity 
+resembles commercial accommodation. This internal variation is crucial for policy design: 
+any definition of “professional landlord” will capture operators with very different 
+business models, resources, and incentives.
+"""))
+```
+
+## 3.3. Properties Affected by Proposal 
+```{python}
+display(Markdown(f"""
+Taken together, professional landlords are responsible for {num_prof_listings:,} 
+properties, representing {pct_prof_listings:.2f}% of all Airbnb listings in London. 
+This provides an upper-bound estimate of the number of properties that would fall under 
+the opposition’s proposal if regulation were targeted at professional operators. The 
+result highlights the concentration of platform activity: a relatively small group of 
+hosts controls a significant share of the city’s short-term rental supply.
+"""))
+```
+
+However, the distribution of these properties is far from even. To assess where the proposal would have the greatest impact, we mapped all listings associated with professional landlords across London boroughs.
+
+```{python}
+#=========================================================
+# Affected Airbnb listings by borough
+#=========================================================
+
+# Explicit borough name column
+borough_col = "NAME"
+
+# Spatial join: professional listings → boroughs
+joined = gpd.sjoin(
+    gdf_l.loc[gdf_l["host_id"].isin(prof_hosts), ["geometry"]],
+    boroughs[[borough_col, "geometry"]],
+    predicate="within",
+    how="left"
+)
+
+# Count affected listings per borough
+affected_per_borough = (
+    joined.groupby(borough_col)
+          .size()
+          .reindex(boroughs[borough_col], fill_value=0)
+)
+
+# Attach counts to borough GeoDataFrame
+boroughs["affected_count"] = affected_per_borough.values
+
+# Fixed percentile breaks
+breaks = np.percentile(
+    boroughs["affected_count"],
+    [0, 17, 33, 50, 67, 83, 100]
+)
+
+boroughs["class"] = pd.cut(
+    boroughs["affected_count"],
+    bins=breaks,
+    labels=False,
+    include_lowest=True
+)
+
+# Colour map 
+airbnb_cmap = ListedColormap(COLORS["diverging"])
+
+# PLOT
+fig, ax = plt.subplots(figsize=(14, 10))
+
+boroughs.plot(
+    column="class",
+    cmap=airbnb_cmap,
+    linewidth=0.4,
+    edgecolor="white",
+    ax=ax,
+    legend=False
+)
+
+boroughs.boundary.plot(ax=ax, color="black", linewidth=0.5)
+
+# Legend labels from breaks
+legend_labels = [
+    f"{int(breaks[i])}–{int(breaks[i + 1])}"
+    for i in range(len(breaks) - 1)
+]
+
+legend_patches = [
+    plt.Rectangle((0, 0), 1, 1, facecolor=COLORS["diverging"][i])
+    for i in range(len(legend_labels))
+]
+
+leg = ax.legend(
+    legend_patches,
+    legend_labels,
+    title="Affected Listings per Borough",
+    loc="lower right",
+    bbox_to_anchor=(0.98, 0.02),
+    frameon=True,
+    fontsize=10,
+    title_fontsize=11
+)
+
+leg.get_frame().set_edgecolor("black")
+leg.get_frame().set_linewidth(1.0)
+
+# Title + stats box
+ax.set_title(
+    f"Affected Airbnb Listings by Borough\n"
+    f"{len(gdf_l[gdf_l['host_id'].isin(prof_hosts)]):,} Affected | "
+    f"{len(gdf_l):,} Total Listings",
+    fontsize=15,
+    pad=25
+)
+
+stats_text = (
+    f"AFFECTED LISTINGS SUMMARY\n"
+    f"• Total listings: {len(gdf_l):,}\n"
+    f"• Affected: {len(gdf_l[gdf_l['host_id'].isin(prof_hosts)]):,}\n"
+    f"• Legend shows exact borough counts"
+)
+
+ax.text(
+    0.02, 0.98,
+    stats_text,
+    transform=ax.transAxes,
+    fontsize=12,
+    va="top",
+    bbox=dict(
+        boxstyle="round,pad=0.45",
+        facecolor="white",
+        edgecolor="black",
+        alpha=0.95
+    )
+)
+
+# Map furniture
+add_north_arrow(ax, location=(0.07, 0.18), zoom=0.05)
+add_scale_bar_5km(ax, location=(0.035, 0.06))
+
+ax.axis("off")
+plt.tight_layout()
+plt.savefig("affected_listings_borough_map_fixed.png", dpi=300, bbox_inches="tight")
+plt.show()
+```
+
+The map shows clear clustering in specific high-demand boroughs, while many outer areas have relatively few affected properties. As a result, the uneven geography has important implications for both policy design and political communication. Boroughs with large concentrations of professional listings would experience the most substantial regulatory impact, whereas others would see minimal change. The proposal is therefore not simply a citywide intervention but one with geographically concentrated consequences.
+
+
+# 4. Pros and Cons of the Opposition's Proposal
+
+## 4.1 Positive impacts of the proposed policy
+Their proposal offers several potential advantages, particularly in how it frames and targets short-term rental activity in London.
+
+Most importantly, the proposal focuses regulatory attention on commercial operators rather than casual hosts. By distinguishing portfolio-style, hotel-like activity embedded in residential housing from low-intensity home-sharing, it draws a clear boundary between commercial use and supplementary household income. This allows regulation to be justified on the basis of scale and intensity rather than participation alone. As shown in the revenue concentration curve below, the top 10% of hosts capture roughly three-quarters of total estimated Airbnb revenue, while the top 30% account for almost all revenue, highlighting the extreme concentration of commercial activity on the platform. This concentration reinforces the case that registration requirements and higher Council Tax rates represent a targeted response to commercial activity rather than a blanket restriction on hosting.
+
+```{python, fig.height = 7, fig.width = 8}
+#=========================================================
+# Prepare host-level revenue
+#=========================================================
+
+df_rev = df_l.copy()
+
+# Ensure revenue is numeric
+df_rev["estimated_revenue_l365d"] = pd.to_numeric(
+    df_rev["estimated_revenue_l365d"], errors="coerce"
+)
+
+# Drop listings with no revenue estimate
+df_rev = df_rev.dropna(subset=["estimated_revenue_l365d"])
+
+# Aggregate revenue at host level
+host_revenue = (
+    df_rev
+    .groupby("host_id")["estimated_revenue_l365d"]
+    .sum()
+    .sort_values(ascending=False)
+)
+
+# Build concentration curve
+
+cum_revenue_share = host_revenue.cumsum() / host_revenue.sum()
+cum_host_share = np.arange(1, len(host_revenue) + 1) / len(host_revenue)
+
+
+# PLOT
+fig, ax = plt.subplots(figsize=(8, 6))
+
+# Concentration curve
+ax.plot(
+    cum_host_share,
+    cum_revenue_share,
+    linewidth=2,
+    color=COLORS["sequential"]["blue"][-1],  # darkest blue
+    label="Observed revenue concentration"
+)
+
+# Equality line
+ax.plot(
+    [0, 1], [0, 1],
+    linestyle="--",
+    color="grey",
+    label="Equal distribution"
+)
+
+# Highlight key points
+for p in [0.01, 0.10, 0.30]:
+    idx = int(np.ceil(p * len(host_revenue))) - 1
+    ax.scatter(
+        cum_host_share[idx],
+        cum_revenue_share.iloc[idx],
+        color=COLORS["airbnb"]["red"]["main"],
+        s=45,
+        zorder=4
+    )
+    ax.text(
+        cum_host_share[idx],
+        cum_revenue_share.iloc[idx],
+        f"  Top {int(p*100)}%",
+        fontsize=10,
+        va="bottom"
+    )
+
+# Percentage axis formatting
+ax.xaxis.set_major_formatter(PercentFormatter(1.0))
+ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+
+# Labels and title
+ax.set_xlabel("Share of hosts (ranked from highest to lowest revenue)")
+ax.set_ylabel("Share of total estimated revenue")
+ax.set_title("Concentration of Airbnb Revenue Across Hosts", )
+
+ax.legend(frameon=False)
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
+The proposal also creates a mechanism for generating new public revenue that could be redirected toward housing-related objectives. Higher Council Tax rates on professional listings convert private extraction of housing value into fiscal resources that can support complementary policy goals. In principle, this revenue could be reinvested in measures that expand or stabilise long-term rental supply, particularly in high-pressure areas. For example, funds could be earmarked for social or intermediate housing delivery or used to address viability gaps in small infill developments and estate renewal projects. While the scale of revenue would depend on design and enforcement, the link between regulation and reinvestment strengthens the policy rationale.
+
+Finally, the proposal is likely to improve neighbourhood conditions in areas with high concentrations of professional short-term rentals. Reducing the prevalence of high-frequency, entire-home listings may lower visitor churn, noise, and building-level disruption. Over time, this could support greater residential stability in the most affected neighbourhoods and contribute to the long-term functioning of mixed-use areas, restoring more predictable residential use without removing tourism from central London.
+
+
+## 4.2 Concentrated impacts and potential downsides
+A central risk of the opposition’s proposal is that its impacts would be highly uneven across London, disproportionately affecting a small number of central boroughs rather than producing a city-wide rebalancing. Linking Airbnb listings to Office for National Statistics [@ONSPrivateRentalMarket] private rented sector (PRS) data, while recognising that these figures are lagged and provide only an approximate snapshot of local rental markets, shows that short-term rental pressure is extremely concentrated. Measured as the number of professional short-term rentals per 1,000 PRS tenancies, the City of London records around 2,855 listings, compared with roughly 100 in Bromley—a gap of nearly 28 to 1. A small group of inner boroughs therefore carry the bulk of commercial short-term rental activity relative to their housing stock, while many outer boroughs remain comparatively low-pressure.
+
+```{python}
+
+# ============================================================
+# 1. Load & clean ONS Private Rented Sector (PRS) data
+# ============================================================
+
+url_ons = (
+    "https://github.com/zhengpei-xu/CASA0013_Groupwork/"
+    "raw/Pippin/01_Data/Raw/privaterentalmarketstatistics231220.csv"
+)
+
+df_ons = pd.read_csv(url_ons, header=None)
+
+# Skip metadata rows and set headers
+df_ons = df_ons.iloc[5:].reset_index(drop=True)
+df_ons.columns = df_ons.iloc[0]
+df_ons = df_ons.iloc[1:].reset_index(drop=True)
+
+# Clean column names
+df_ons.columns = (
+    df_ons.columns.astype(str)
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("/", "_")
+    .str.replace("-", "_")
+    .str.replace("__", "_")
+)
+
+# Keep valid LA rows
+df_ons = df_ons[df_ons["la_code1"].notna()].reset_index(drop=True)
+
+# Convert numeric columns
+numeric_cols = ["count_of_rents", "mean", "median"]
+for col in numeric_cols:
+    df_ons[col] = (
+        df_ons[col].astype(str)
+        .str.replace(",", "", regex=False)
+        .astype(float)
+    )
+
+# Filter London boroughs only
+df_ons = df_ons.rename(columns={"area_code1": "area_code"})
+df_ons_london = df_ons[df_ons["area_code"].str.startswith("E09")]
+
+# ============================================================
+# 2. Merge ONS PRS data with borough geometries
+# ============================================================
+
+df_ons_geo = (
+    boroughs
+    .merge(
+        df_ons_london,
+        left_on="GSS_CODE",
+        right_on="area_code",
+        how="left"
+    )
+    .rename(columns={"NAME": "borough"})
+)
+
+df_ons_geo["borough_clean"] = (
+    df_ons_geo["borough"]
+    .str.strip()
+    .str.lower()
+    .str.replace("&", "and")
+)
+
+# ============================================================
+# 3. Compute professional listings per borough (NO pressure_areas)
+# ============================================================
+
+# Flag professional listings
+gdf_l["is_professional"] = gdf_l["host_id"].isin(prof_hosts)
+
+# Spatial join: listings → boroughs
+listings_with_borough = gpd.sjoin(
+    gdf_l[gdf_l["is_professional"]],
+    boroughs[["NAME", "geometry"]],
+    how="left",
+    predicate="within"
+)
+
+# Count professional listings per borough
+pro_counts = (
+    listings_with_borough
+    .groupby("NAME")
+    .size()
+    .reset_index(name="pro_listings")
+)
+
+# Clean borough names for merge
+pro_counts["borough_clean"] = (
+    pro_counts["NAME"]
+    .str.strip()
+    .str.lower()
+    .str.replace("&", "and")
+)
+
+# ============================================================
+# 4. Merge PRS + professional listing counts
+# ============================================================
+
+df_map = df_ons_geo.merge(
+    pro_counts[["borough_clean", "pro_listings"]],
+    on="borough_clean",
+    how="left"
+)
+
+df_map["pro_listings"] = df_map["pro_listings"].fillna(0)
+df_map["count_of_rents"] = pd.to_numeric(df_map["count_of_rents"], errors="coerce")
+
+# STR pressure per 1,000 PRS tenancies
+df_map["str_pressure_per_1000_prs"] = (
+    df_map["pro_listings"] / df_map["count_of_rents"] * 1000
+)
+
+# ============================================================
+# 5. Plot borough-level STR pressure map 
+# ============================================================
+
+# Continuous diverging colour map
+diverging_cmap = LinearSegmentedColormap.from_list(
+    "airbnb_diverging",
+    COLORS["sequential"]["blue"],
+    N=256
+)
+
+# Normalisation for continuous scale
+norm = Normalize(
+    vmin=df_map["str_pressure_per_1000_prs"].min(),
+    vmax=df_map["str_pressure_per_1000_prs"].max()
+)
+
+# Plot
+fig, ax = plt.subplots(figsize=(14, 10))
+
+df_map.plot(
+    column="str_pressure_per_1000_prs",
+    cmap=diverging_cmap,
+    norm=norm,
+    linewidth=0.6,
+    edgecolor="white",
+    ax=ax,
+    legend=True,
+    legend_kwds={
+        "label": "Professional STRs per 1,000 PRS tenancies",
+        "shrink": 0.75
+    }
+)
+
+# Borough outlines on top
+boroughs.boundary.plot(
+    ax=ax,
+    color="black",
+    linewidth=0.5
+)
+
+# Titles and formatting
+ax.set_title(
+    "Borough-level Concentration of Professional Short-Term Rentals\n"
+    "per 1,000 Private Rented Sector Tenancies",
+    fontsize=15,)
+
+add_north_arrow(ax, location=(0.07, 0.18), zoom=0.05)
+add_scale_bar_5km(ax, location=(0.035, 0.06))
+
+# Source note
+ax.text(
+    0.99,               
+    0.06,               # same vertical position as scale bar
+    "Data Source: Office for National Statistics",
+    transform=ax.transAxes,
+    fontsize=9,
+    ha="right",
+    va="bottom",
+    alpha=0.8
+)
+
+ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+This concentration means that tighter regulation would impose a sharp economic adjustment on a limited set of locations and operators. Professional hosts and property management firms operating in central boroughs would bear most of the direct impact, rather than activity being reduced gradually across the city. While such targeting may be defensible from a regulatory perspective, it creates a sector-specific shock rather than a smooth or evenly distributed transition.
+
+The effects extend beyond hosts themselves. High-volume short-term rental activity supports a range of associated services, including cleaning, maintenance, and property management [@Bivens2019]. Because commercial activity is spatially concentrated, these employment impacts would also be localised, disproportionately affecting workers in central boroughs. Even if aggregate employment effects remain limited at the London-wide scale, the distributional consequences could be significant in specific neighbourhoods.
+
+There are also tourism-related trade-offs. Central boroughs form the core of London’s visitor economy, and reducing short-term rental options may increase accommodation costs or reduce flexibility for certain visitor groups, particularly families and small groups seeking entire-home stays. Without parallel expansion of alternative accommodation, the proposal risks constraining London’s inclusive tourism offer in precisely the areas where visitor demand is most concentrated.
+
+
+# 5. Reframing the Issue: From Housing Pressure to Housing Opportunity and Social Mobility  
+The newspaper story claims Airbnb is “out of control” in London, but geospatial analysis suggests this overstates the problem. Professional activity is concentrated in a small number of central, mixed-use boroughs, indicating a specific structural issue rather than a city-wide one. Research shows that short-term rental markets are dominated by casual hosts, with a much smaller group of commercial operators, and that only certain listings, especially entire homes, overlap with long-term rental supply [@GurranPhibbs2017; @GarciaLopez2020Airbnb].
+
+Given limited data, we adopt two assumptions: that entire-home listings could be used as long-term rentals, and that multiple high-availability listings proxy commercial activity. This shifts the analysis from headline claims to the segment most relevant for housing opportunity.
+
+Seen this way, the pattern reflects central London’s economics. Tourism and commercial demand make short-term rentals more profitable in some boroughs, explaining the clustering of professional hosts and uneven impacts. Because stable long-term housing is closely linked to improved life chances, even small increases in rental availability matter beyond housing alone [@Chetty2016].
+
+## 5.1 Housing Opportunity in a Limited-Data Environment
+
+A more constructive reading of the data recognises that only part of the short-term rental market intersects with long-term housing. Entire-home listings are most relevant, as these properties could, in principle, be rented long term. In our dataset, just over two-thirds of listings fall into this category, identifying the segment closest to the formal housing market.
+
+Within this group, fewer than half of listings are operated by hosts who would be classified as professional under our definition. Most entire-home listings belong to non-professional hosts with a single property. Because commercial activity is heavily concentrated in central, mixed-use boroughs shaped by tourism and business demand, predominantly residential outer areas show little professional presence and far less direct housing pressure. The figure below illustrates both the size of the entire-home category and the small share attributable to professional hosts.
+
+```{python}
+
+# ============================================================
+# 1. Composition counts
+# ============================================================
+
+entire_count = (df_l["room_type"] == "Entire home/apt").sum()
+other_count  = len(df_l) - entire_count
+
+pct_entire = entire_count / len(df_l) * 100
+pct_other  = 100 - pct_entire
+
+# Professional entire homes (using existing prof_hosts definition)
+pro_entire = df_l[
+    (df_l["room_type"] == "Entire home/apt") &
+    (df_l["host_id"].isin(prof_hosts))
+].shape[0]
+
+nonpro_entire = entire_count - pro_entire
+
+pct_pro    = pro_entire / entire_count * 100 if entire_count > 0 else 0
+pct_nonpro = 100 - pct_pro
+
+labels1 = [
+    f"Entire Home — {pct_entire:.1f}%",
+    f"Other — {pct_other:.1f}%"
+]
+
+labels2 = [
+    f"Professional — {pct_pro:.1f}%",
+    f"Non-Professional — {pct_nonpro:.1f}%"
+]
+
+vals1 = [entire_count, other_count]
+vals2 = [pro_entire, nonpro_entire]
+
+# ============================================================
+# 2. Borough-level rates (per 1,000 listings)
+# ============================================================
+
+joined = gpd.sjoin(
+    gdf_l,
+    boroughs[["NAME", "geometry"]],
+    how="left",
+    predicate="within"
+)
+
+borough_total = joined.groupby("NAME").size()
+borough_pro_entire = joined.loc[
+    joined["host_id"].isin(prof_hosts) &
+    (joined["room_type"] == "Entire home/apt")
+].groupby("NAME").size()
+
+rate_per_1000 = (borough_pro_entire / borough_total * 1000).fillna(0)
+boroughs["rate_per_1000"] = boroughs["NAME"].map(rate_per_1000)
+
+# ============================================================
+# 3. Figure layout — donuts + map
+# ============================================================
+
+fig = plt.figure(figsize=(14, 7))
+
+# PLOT Donut 1 — Entire homes share
+ax1 = plt.subplot2grid((2, 2), (0, 0))
+ax1.pie(
+    vals1,
+    labels=labels1,
+    colors=[
+        COLORS["airbnb"]["red"]["main"],
+        COLORS["airbnb"]["red"]["light"]
+    ],
+    wedgeprops={"width": 0.35},
+    textprops={"fontsize": 11}
+)
+ax1.set_title("Share of Listings That Are Entire Homes", fontsize=12)
+
+# PLOT Donut 2 — Pro vs non-pro
+ax2 = plt.subplot2grid((2, 2), (1, 0))
+ax2.pie(
+    vals2,
+    labels=labels2,
+    colors=[
+        COLORS["airbnb"]["red"]["main"],
+        COLORS["airbnb"]["red"]["light"]
+    ],
+    wedgeprops={"width": 0.35},
+    textprops={"fontsize": 11}
+)
+ax2.set_title(
+    "Among Entire Homes:\nProfessional vs Non-Professional",
+    fontsize=12
+)
+
+# 4. PLOT Map 
+diverging_cmap_rb = LinearSegmentedColormap.from_list(
+    "airbnb_diverging",
+    COLORS["diverging"],
+    N=256
+)
+
+vals = boroughs["rate_per_1000"].fillna(0)
+vmax = np.percentile(vals, 95)
+norm = Normalize(vmin=0, vmax=vmax, clip=True)
+
+ax3 = plt.subplot2grid((2, 2), (0, 1), rowspan=2)
+
+boroughs.plot(
+    column="rate_per_1000",
+    cmap=diverging_cmap_rb,
+    norm=norm,
+    linewidth=0.4,
+    edgecolor="white",
+    ax=ax3
+)
+
+boroughs.boundary.plot(
+    ax=ax3,
+    color="black",
+    linewidth=0.5
+)
+
+sm = mpl.cm.ScalarMappable(cmap=diverging_cmap_rb, norm=norm)
+sm._A = []
+
+cbar = fig.colorbar(
+    sm,
+    ax=ax3,
+    orientation="vertical",
+    fraction=0.045,
+    pad=0.02
+)
+
+cbar.set_label(
+    "Professional Entire Homes\n(per 1,000 listings)",
+    fontsize=11
+)
+
+ax3.set_title(
+    "Spatial Concentration of Professional Entire-Home Listings",
+    fontsize=12
+)
+
+ax3.axis("off")
+
+add_north_arrow(ax3, location=(0.07, 0.18), zoom=0.02)
+add_scale_bar_5km(ax3, location=(0.035, 0.06))
+
+plt.tight_layout()
+plt.show()
+```
+
+The spatial pattern shows that professional entire-home listings are concentrated in a handful of central boroughs, reflecting local economic conditions shaped by tourism and business demand and pointing toward a targeted policy response. Rather than applying a city-wide tax to all professional landlords, the issue can therefore be reframed as one of creating housing opportunity. Targeted Council Tax increases in high-demand central areas would focus regulation where commercial activity is concentrated, while avoiding disproportionate impacts in outer boroughs, where non-professional hosts may shift toward long-term renting if profitability falls. Revenue could also support non-professional hosts in transitioning to the long-term rental market, for example through simplified processes or incentives for first-time landlords. Finally, additional revenue generated by the policy could be allocated to the construction of new social housing, increasing housing opportunities across London.
+
+This approach targets the segment with the greatest potential to expand long-term rental supply while still addressing concerns about commercial operators. It frames the issue as an opportunity to increase housing availability rather than as a case for punitive measures.
+
+## 5.2. Long-term Social Mobility
+Targeted regulation affects social mobility as well as housing supply. Housing stability shapes access to schools, jobs, and infrastructure, and research shows that children in stable, high-opportunity areas achieve better long-term outcomes [@LuptonFitzgerald2015; @Chetty2016]. This matters because professional short-term rental activity is concentrated in high-opportunity, high-cost central boroughs such as Westminster, Kensington and Chelsea, and Tower Hamlets. Even modest increases in long-term rental supply in these areas can expand access to mobility-enhancing neighbourhoods. Targeted Airbnb regulation, supported by Council Tax revenue from commercial hosts, can therefore increase long-term housing supply where it has the greatest impact, positioning short-term rental policy as a tool for improving social mobility rather than simply managing housing pressure.
+
+# Bibliography
